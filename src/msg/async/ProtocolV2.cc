@@ -12,6 +12,8 @@
 #include "include/random.h"
 #include "auth/AuthClient.h"
 #include "auth/AuthServer.h"
+#include "messages/MOSDRepOp.h"
+#include "messages/MOSDECSubOpWrite.h"
 
 #define dout_subsys ceph_subsys_ms
 #undef dout_prefix
@@ -1082,6 +1084,14 @@ CtPtr ProtocolV2::read_frame() {
     return nullptr;
   }
 
+  {
+    std::scoped_lock lock{m_ec_subwrite_mutex};
+    if (connection->get_messenger()->should_release_ec_subwrite())
+    {
+      handle_message_2(connection->get_messenger()->get_subwrite_message(), connection->get_messenger()->get_subwrite_current_header(), connection->get_messenger()->get_subwrite_cur_message_size(), connection->get_messenger()->get_subwrite_header());
+      connection->get_messenger()->ec_subwrite_released();
+    }
+  }
   ldout(cct, 20) << __func__ << dendl;
   rx_preamble.clear();
   rx_epilogue.clear();
@@ -1402,6 +1412,46 @@ CtPtr ProtocolV2::handle_message() {
       msg_frame.middle(),
       msg_frame.data(),
       connection);
+
+  if (header.type == MSG_OSD_REPOP && connection->get_messenger()->should_hold_next_ec_subwrite()) {
+    connection->get_messenger()->hold_subwrite(message, current_header, cur_msg_size, header);
+    message = 0;
+    state = READY;
+    return CONTINUE(read_frame);
+  } else if (header.type == MSG_OSD_EC_WRITE) {
+    connection->get_messenger()->hold_subwrite(message, current_header, cur_msg_size, header);
+    message = 0;
+    state = READY;
+    return CONTINUE(read_frame);
+  }
+  
+  if (header.type == MSG_OSD_REPOP && connection->get_messenger()->ec_subwrite_held()) {
+    MOSDRepOp* m1 = dynamic_cast<MOSDRepOp*>(message);
+    MOSDRepOp* m2 = dynamic_cast<MOSDRepOp*>(connection->get_messenger()->peek_subwrite_message());
+    m1->decode_payload();
+    m2->decode_payload();
+    if (m1->reqid.tid == m2->reqid.tid) {
+      message = 0;
+      state = READY;
+      return CONTINUE(read_frame);
+    }
+  } else if (header.type == MSG_OSD_EC_WRITE && connection->get_messenger()->ec_subwrite_held()) {
+    MOSDECSubOpWrite* m1 = dynamic_cast<MOSDECSubOpWrite*>(message);
+    MOSDECSubOpWrite* m2 = dynamic_cast<MOSDECSubOpWrite*>(connection->get_messenger()->peek_subwrite_message());
+    m1->decode_payload();
+    m2->decode_payload();
+    if (m1->op.reqid.tid == m2->op.reqid.tid) {
+      message = 0;
+      state = READY;
+      return CONTINUE(read_frame);
+    }
+  }
+
+  return handle_message_2(message, current_header, cur_msg_size, header);
+}
+
+CtPtr ProtocolV2::handle_message_2(Message* message, ceph_msg_header2 current_header, const size_t cur_msg_size, ceph_msg_header header)
+{
   if (!message) {
     ldout(cct, 1) << __func__ << " decode message failed " << dendl;
     return _fault();

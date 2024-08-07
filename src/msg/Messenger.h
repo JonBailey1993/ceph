@@ -106,6 +106,14 @@ private:
 
   ZTracer::Endpoint trace_endpoint;
 
+  std::mutex m_ec_subwrite_mutex;
+  bool m_should_hold_next_subwrite = false;
+  bool m_should_release_subwrite = false;
+  std::optional<Message*> held_message;
+  std::optional<ceph_msg_header2> held_current_header;
+  std::optional<size_t> held_cur_msg_size;
+  std::optional<ceph_msg_header> held_header;
+
   static void insert_head(std::vector<PriorityDispatcher>& v,
                           PriorityDispatcher d)
   {
@@ -244,6 +252,20 @@ public:
    */
   uint32_t get_magic() { return magic; }
   void set_magic(int _magic) { magic = _magic; }
+
+  void hold_next_ec_subwrite();
+  bool should_hold_next_ec_subwrite();
+  bool ec_subwrite_held();
+  void hold_subwrite(Message* message, ceph_msg_header2 current_header, const size_t cur_msg_size, ceph_msg_header header);
+  bool subwrite_held();
+  void release_ec_subwrite();
+  bool should_release_ec_subwrite();
+  void ec_subwrite_released();
+  Message* peek_subwrite_message();
+  Message* get_subwrite_message();
+  ceph_msg_header2 get_subwrite_current_header();
+  const size_t get_subwrite_cur_message_size();
+  ceph_msg_header get_subwrite_header();
 
   void set_auth_client(AuthClient *ac) {
     auth_client = ac;

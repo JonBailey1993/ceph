@@ -269,6 +269,202 @@ TEST_F(LibRadosIo, XattrIter) {
   rados_getxattrs_end(iter);
 }
 
+#include "include/rados/librados.hpp"
+#include "json_spirit/json_spirit.h"
+
+TEST_F(LibRadosIo, OverlappingIOsJon) {
+  SKIP_IF_CRIMSON();
+
+  int bsize = 4096;
+  int double_bsize = bsize * 2;
+
+  std::string object_id = "myobject";
+
+  // Need to find chunk size and strip size for this
+
+  char* buf0 = (char*)new char[double_bsize];
+  char* buf1 = (char*)new char[double_bsize];
+  char* buf2 = (char*)new char[double_bsize];
+  char* buf3 = (char*)new char[double_bsize];
+  
+  int offset1 = 0;
+  int offset2 = offset1;
+  int offset3 = offset1;
+
+  auto cleanup = [&] {
+    delete[] buf0;
+    delete[] buf1;
+    delete[] buf2;
+    delete[] buf3;
+  };
+
+  memset(buf0, 'a', double_bsize);
+  memset(buf1, 'b', double_bsize);
+  memset(buf2, 'c', double_bsize);
+
+  scope_guard<decltype(cleanup)> sg(std::move(cleanup));
+
+  const rados_t& c = cluster;
+
+  auto send_montior_message = [&c](std::string json, int expected_rc) -> std::string {
+    bufferlist inbl;
+    bufferlist outbl;
+    int r = ((librados::Rados&)c).mon_command(json, inbl, &outbl, NULL);
+    if (outbl.length() == 0)
+      std::cout << "Send json: " << json << "\nRecieved rc = " << r << " and expected rc = " << expected_rc << std::endl;
+    else
+      std::cout << "Send json: " << json << "\nRecieved response: " << outbl.c_str() << "\nRecieved rc = " << r << " and expected rc = " << expected_rc << std::endl;
+    
+    [r, expected_rc]() -> void { ASSERT_EQ(r, expected_rc); }();
+    return outbl.length() == 0 ? "" : outbl.c_str();
+  };
+
+  auto send_osd_message = [&c](int osd_id, std::string json, std::string& out_json) {
+    bufferlist inbl;
+    bufferlist outbl;
+    int rc = ((librados::Rados&)c).osd_command(osd_id, json, inbl, &outbl, NULL);
+    if (outbl.length() > 0) {
+      out_json = outbl.c_str();
+      out_json = out_json.substr(0, out_json.find("}") + 1);
+      std::cout << "Send json: " << json << "\nRecieved response = " << out_json << std::endl;
+    } else {
+      std::cout << "Send json: " << json << std::endl;
+    }
+    
+    return rc;
+  };
+
+  auto parse_json_object_for_value = [](std::string json, std::string key) -> std::optional<json_spirit::Value>
+  {
+    json_spirit::Value json_value;
+    bool valid = json_spirit::read(json, json_value);
+    [valid]() -> void { ASSERT_EQ(valid, true); }();
+    json_spirit::Object& o = json_value.get_obj();
+    
+    for (json_spirit::Object::size_type i=0; i<o.size(); i++) {
+      json_spirit::Pair& p = o[i];
+      if (p.name_ == key) {
+        return std::make_optional<json_spirit::Value>(p.value_);
+      }
+    }
+
+    []() -> void { FAIL(); }();
+    return std::nullopt;
+  };
+
+  string osd_details_cmd = std::string(
+    "{\"prefix\": \"osd map\",\
+      \"pool\":\"" + pool_name + "\",\
+      \"format\": \"json\"}");
+
+  std::string osd_details_outstr = send_montior_message(osd_details_cmd, 0);
+  int up_primary = parse_json_object_for_value(osd_details_outstr, "up_primary")->get_int();
+  json_spirit::Array osds = parse_json_object_for_value(osd_details_outstr, "up")->get_array();
+
+  unsigned int k = osds.size() - 1;
+  unsigned int m = 0;
+
+  std::list<int> secondary;
+  std::list<int> parity;
+
+  while (!osds.empty())
+  {
+    if (parity.size() < m)
+    {
+      parity.push_front(osds.back().get_int());
+      osds.pop_back();
+    }
+    else if (secondary.size() < (k - 1))
+    {
+      secondary.push_front(osds.back().get_int());
+      osds.pop_back();
+    }
+    else
+    {
+      ASSERT_EQ(osds.size(), 1);
+      ASSERT_EQ(osds.front(), up_primary);
+      osds.pop_back();
+    }
+  }
+
+  ASSERT_NE(-1, up_primary);
+  ASSERT_EQ(k-1, secondary.size());
+  ASSERT_EQ(m, parity.size());
+
+  int pre_write_ret = rados_write(ioctx, object_id.c_str(), buf0, double_bsize, offset1);
+  std::cout << "Recieved return code " << pre_write_ret << " from pre-write" << std::endl;
+  ASSERT_EQ(0, pre_write_ret);
+
+  std::string output;
+  string hold_ec_write_command = std::string(
+    "{\"prefix\":\"hold_next_ec_subwrite\",\
+    \"format\":\"json\"}");
+  int rc = send_osd_message(secondary.front(), hold_ec_write_command, output);
+  ASSERT_EQ(rc, 0);
+
+  std::atomic<bool> can_release;
+  can_release.store(false);
+
+  std::thread write1_thread([&can_release](rados_ioctx_t ioctx, std::string object_id, char* buf, int double_bsize, int offset) {
+    std::cout << "About to perform write 1" << std::endl;
+    int ret = rados_write(ioctx, object_id.c_str(), buf, double_bsize, offset);
+    std::cout << "Recieved return code " << ret << " from write 1" << std::endl;
+    ASSERT_EQ(true, can_release.load());
+    ASSERT_EQ(0, ret);
+  }, ioctx, object_id, buf1, double_bsize, offset1);
+
+  std::thread write2_thread([&send_osd_message, &parse_json_object_for_value, &can_release](rados_ioctx_t ioctx, std::string object_id, char* buf, int double_bsize, int offset, int osd){
+    string ec_subwrite_held_command = std::string(
+      "{\"prefix\":\"ec_subwrite_held\",\
+      \"format\":\"json\"}");
+    std::string is_held_json_output;
+    int rc = send_osd_message(osd, ec_subwrite_held_command, is_held_json_output);
+    ASSERT_EQ(rc, 0);
+    bool is_held = parse_json_object_for_value(is_held_json_output, "subwrite_held")->get_bool();
+    std::cout << std::boolalpha;
+    std::cout << "ec_subwrite_held returned: " << is_held << std::endl;
+    while (!is_held)
+    {
+      rc = send_osd_message(osd, ec_subwrite_held_command, is_held_json_output);
+      ASSERT_EQ(rc, 0);
+      is_held = parse_json_object_for_value(is_held_json_output, "subwrite_held")->get_bool();
+      std::cout << std::boolalpha;
+      std::cout << "ec_subwrite_held on OSD " << osd << " returned: " << is_held << std::endl;
+      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    }
+
+    std::cout << "About to perform write 2" << std::endl;
+    int ret = rados_write(ioctx, object_id.c_str(), buf, double_bsize, offset);
+    std::cout << "Recieved return code " << ret << " from write 2" << std::endl;
+    ASSERT_EQ(0, ret);
+
+    // std::cout << "About to perform read" << std::endl;
+    // int read_ret = rados_read(ioctx, object_id.c_str(), buf, double_bsize, offset);
+    // std::cout << "Recieved return code " << read_ret << " from read" << std::endl;
+    // std::cout << "Read " << std::string(buf) << " from offset " << offset << std::endl;
+
+    can_release.store(true);
+    
+    string release_ec_write_command = string("{\"prefix\":\"release_ec_subwrite\",\"format\":\"json\"}");
+    std::string output;
+    rc = send_osd_message(osd, release_ec_write_command, output);
+    ASSERT_EQ(0, rc);
+  }, ioctx, object_id, buf2, double_bsize, offset2, secondary.front());
+  
+  write1_thread.join();
+  write2_thread.join();
+
+  // std::cout << "Wrote " << std::string(buf1) << " to offset " << offset1 << std::endl;
+  // std::cout << "Wrote " << std::string(buf2) << " to offset " << offset2 << std::endl;
+
+  int read_ret = rados_read(ioctx, object_id.c_str(), buf3, double_bsize, offset3);
+  std::cout << "Read " << std::string(buf3) << " from offset " << offset1 << std::endl;
+
+  std::cout << "Recieved return code " << read_ret << " from read" << std::endl;
+  
+  ASSERT_EQ(double_bsize, read_ret);
+}
+
 TEST_F(LibRadosIoEC, SimpleWrite) {
   SKIP_IF_CRIMSON();
   char buf[128];
@@ -458,4 +654,225 @@ TEST_F(LibRadosIoEC, XattrIter) {
     }
   }
   rados_getxattrs_end(iter);
+}
+
+TEST_F(LibRadosIoEC, OverlappingIOsJon) {
+  SKIP_IF_CRIMSON();
+
+  int bsize = 4096;
+  int double_bsize = bsize * 2;
+
+  std::string object_id = "myobject";
+
+  // Need to find chunk size and strip size for this
+
+  char* buf0 = (char*)new char[double_bsize];
+  char* buf1 = (char*)new char[double_bsize];
+  char* buf2 = (char*)new char[double_bsize];
+  char* buf3 = (char*)new char[double_bsize];
+  
+  int offset1 = 0;
+  int offset2 = offset1;
+  int offset3 = offset1;
+
+  auto cleanup = [&] {
+    delete[] buf0;
+    delete[] buf1;
+    delete[] buf2;
+    delete[] buf3;
+  };
+
+  memset(buf0, 'a', double_bsize);
+  memset(buf1, 'b', double_bsize);
+  memset(buf2, 'c', double_bsize);
+
+  scope_guard<decltype(cleanup)> sg(std::move(cleanup));
+
+  const rados_t& c = cluster;
+
+  auto send_montior_message = [&c](std::string json, int expected_rc) -> std::string {
+    bufferlist inbl;
+    bufferlist outbl;
+    int r = ((librados::Rados&)c).mon_command(json, inbl, &outbl, NULL);
+    if (outbl.length() == 0)
+      std::cout << "Send json: " << json << "\nRecieved rc = " << r << " and expected rc = " << expected_rc << std::endl;
+    else
+      std::cout << "Send json: " << json << "\nRecieved response: " << outbl.c_str() << "\nRecieved rc = " << r << " and expected rc = " << expected_rc << std::endl;
+    
+    [r, expected_rc]() -> void { ASSERT_EQ(r, expected_rc); }();
+    return outbl.length() == 0 ? "" : outbl.c_str();
+  };
+
+  auto send_osd_message = [&c](int osd_id, std::string json, std::string& out_json) {
+    bufferlist inbl;
+    bufferlist outbl;
+    int rc = ((librados::Rados&)c).osd_command(osd_id, json, inbl, &outbl, NULL);
+    if (outbl.length() > 0) {
+      out_json = outbl.c_str();
+      out_json = out_json.substr(0, out_json.find("}") + 1);
+      std::cout << "Send json: " << json << "\nRecieved response = " << out_json << std::endl;
+    } else {
+      std::cout << "Send json: " << json << std::endl;
+    }
+    
+    return rc;
+  };
+
+  auto parse_json_object_for_value = [](std::string json, std::string key) -> std::optional<json_spirit::Value>
+  {
+    json_spirit::Value json_value;
+    bool valid = json_spirit::read(json, json_value);
+    [valid]() -> void { ASSERT_EQ(valid, true); }();
+    json_spirit::Object& o = json_value.get_obj();
+    
+    for (json_spirit::Object::size_type i=0; i<o.size(); i++) {
+      json_spirit::Pair& p = o[i];
+      if (p.name_ == key) {
+        return std::make_optional<json_spirit::Value>(p.value_);
+      }
+    }
+
+    []() -> void { FAIL(); }();
+    return std::nullopt;
+  };
+
+  std::string allow_ec_overwrites_cmd = std::string(
+    "{\"prefix\": \"osd pool set\",\
+  \"pool\": \"" + pool_name + "\",\
+  \"var\": \"allow_ec_overwrites\",\
+  \"val\": \"" + "true" + "\"}"
+  );
+  send_montior_message(allow_ec_overwrites_cmd, 0);
+
+  string ec_profile_cmd = std::string(
+    "{\"prefix\": \"osd pool get\",\
+    \"pool\":\"" + pool_name + "\",\
+    \"var\": \"erasure_code_profile\",\
+    \"format\": \"json\"}"
+  );
+  std::string ec_profile_outstr = send_montior_message(ec_profile_cmd, 0);
+  std::string erasure_code_profile = parse_json_object_for_value(ec_profile_outstr, std::string("erasure_code_profile"))->get_str();
+  ASSERT_NE(erasure_code_profile, "");
+  
+  string ec_details_cmd = std::string(
+    "{\"prefix\": \"osd erasure-code-profile get\",\
+      \"name\":\"" + erasure_code_profile + "\",\
+      \"format\": \"json\"}");
+  std::string ec_details_outstr = send_montior_message(ec_details_cmd, 0);
+
+  std::string plugin = parse_json_object_for_value(ec_details_outstr, "plugin")->get_str();
+  unsigned int k = std::stoi(parse_json_object_for_value(ec_details_outstr, "k")->get_str());
+  unsigned int m = std::stoi(parse_json_object_for_value(ec_details_outstr, "m")->get_str());
+
+  ASSERT_TRUE(plugin == "jerasure" || plugin == "isa");
+  ASSERT_EQ(2, k);
+  ASSERT_EQ(1, m);
+
+  string osd_details_cmd = std::string(
+    "{\"prefix\": \"osd map\",\
+      \"pool\":\"" + pool_name + "\",\
+      \"object\": \"" + erasure_code_profile + "\",\
+      \"format\": \"json\"}");
+  std::string osd_details_outstr = send_montior_message(osd_details_cmd, 0);
+  int up_primary = parse_json_object_for_value(osd_details_outstr, "up_primary")->get_int();
+  json_spirit::Array osds = parse_json_object_for_value(osd_details_outstr, "up")->get_array();
+
+  std::list<int> secondary;
+  std::list<int> parity;
+
+  while (!osds.empty())
+  {
+    if (parity.size() < m)
+    {
+      parity.push_front(osds.back().get_int());
+      osds.pop_back();
+    }
+    else if (secondary.size() < (k - 1))
+    {
+      secondary.push_front(osds.back().get_int());
+      osds.pop_back();
+    }
+    else
+    {
+      ASSERT_EQ(osds.size(), 1);
+      ASSERT_EQ(osds.front(), up_primary);
+      osds.pop_back();
+    }
+  }
+
+  ASSERT_NE(-1, up_primary);
+  ASSERT_EQ(k-1, secondary.size());
+  ASSERT_EQ(m, parity.size());
+
+  int pre_write_ret = rados_write(ioctx, object_id.c_str(), buf0, double_bsize, offset1);
+  std::cout << "Recieved return code " << pre_write_ret << " from pre-write" << std::endl;
+  ASSERT_EQ(0, pre_write_ret);
+
+  std::string output;
+  string hold_ec_write_command = std::string(
+    "{\"prefix\":\"hold_next_ec_subwrite\",\
+    \"format\":\"json\"}");
+  int rc = send_osd_message(secondary.front(), hold_ec_write_command, output);
+  ASSERT_EQ(rc, 0);
+
+  std::atomic<bool> can_release;
+  can_release.store(false);
+
+  std::thread write1_thread([&can_release](rados_ioctx_t ioctx, std::string object_id, char* buf, int double_bsize, int offset) {
+    std::cout << "About to perform write 1" << std::endl;
+    int ret = rados_write(ioctx, object_id.c_str(), buf, double_bsize, offset);
+    std::cout << "Recieved return code " << ret << " from write 1" << std::endl;
+    ASSERT_EQ(true, can_release.load());
+    ASSERT_EQ(0, ret);
+  }, ioctx, object_id, buf1, double_bsize, offset1);
+
+  std::thread write2_thread([&send_osd_message, &parse_json_object_for_value, &can_release](rados_ioctx_t ioctx, std::string object_id, char* buf, int double_bsize, int offset, int osd){
+    string ec_subwrite_held_command = std::string(
+      "{\"prefix\":\"ec_subwrite_held\",\
+      \"format\":\"json\"}");
+    std::string is_held_json_output;
+    int rc = send_osd_message(osd, ec_subwrite_held_command, is_held_json_output);
+    ASSERT_EQ(rc, 0);
+    bool is_held = parse_json_object_for_value(is_held_json_output, "subwrite_held")->get_bool();
+    std::cout << std::boolalpha;
+    std::cout << "ec_subwrite_held returned: " << is_held << std::endl;
+    while (!is_held)
+    {
+      rc = send_osd_message(osd, ec_subwrite_held_command, is_held_json_output);
+      ASSERT_EQ(rc, 0);
+      is_held = parse_json_object_for_value(is_held_json_output, "subwrite_held")->get_bool();
+      std::cout << std::boolalpha;
+      std::cout << "ec_subwrite_held on OSD " << osd << " returned: " << is_held << std::endl;
+      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    }
+
+    std::cout << "About to perform read" << std::endl;
+    int ret = rados_write(ioctx, object_id.c_str(), buf, double_bsize, offset);
+    std::cout << "Recieved return code " << ret << " from write 2" << std::endl;
+    ASSERT_EQ(0, ret);
+
+    // int read_ret = rados_read(ioctx, object_id.c_str(), buf, double_bsize, offset);
+    // std::cout << "Recieved return code " << read_ret << " from read" << std::endl;
+    // std::cout << "Read " << std::string(buf) << " from offset " << offset << std::endl;
+
+    can_release.store(true);
+    
+    string release_ec_write_command = string("{\"prefix\":\"release_ec_subwrite\",\"format\":\"json\"}");
+    std::string output;
+    rc = send_osd_message(osd, release_ec_write_command, output);
+    ASSERT_EQ(0, rc);
+  }, ioctx, object_id, buf2, double_bsize, offset2, secondary.front());
+  
+  write1_thread.join();
+  write2_thread.join();
+
+  // std::cout << "Wrote " << std::string(buf1) << " to offset " << offset1 << std::endl;
+  // std::cout << "Wrote " << std::string(buf2) << " to offset " << offset2 << std::endl;
+
+  int read_ret = rados_read(ioctx, object_id.c_str(), buf3, double_bsize, offset3);
+  std::cout << "Read " << std::string(buf3) << " from offset " << offset1 << std::endl;
+
+  std::cout << "Recieved return code " << read_ret << " from read" << std::endl;
+  
+  ASSERT_EQ(double_bsize, read_ret);
 }

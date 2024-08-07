@@ -3396,7 +3396,25 @@ will start to track new ops received afterwards.";
     ceph_assert(m);
     m->dump_stats(f);
     m->put();
-  } else {
+  } else if (prefix == "hold_next_ec_subwrite") {
+    cluster_messenger->hold_next_ec_subwrite();
+  } else if (prefix == "release_ec_subwrite") {
+    cluster_messenger->release_ec_subwrite();
+  } else if (prefix == "ec_subwrite_held") {
+    bool held = cluster_messenger->ec_subwrite_held();
+    if (held)
+    {
+      ostringstream oss;
+      oss << "{\"subwrite_held\": true}";
+      outbl.append(oss.str());
+    }
+    else
+    {
+      ostringstream oss;
+      oss << "{\"subwrite_held\": false}";
+      outbl.append(oss.str());
+    }
+  }else {
     ceph_abort_msg("broken asok registration");
   }
 
@@ -4129,6 +4147,16 @@ void OSD::final_init()
   asok_hook = new OSDSocketHook(this);
   int r = admin_socket->register_command("status", asok_hook,
 					 "high-level status of OSD");
+
+  r = admin_socket->register_command("hold_next_ec_subwrite", asok_hook,
+                                     "Prevents the next ec subwrite being progressed through the OSD");
+
+  r = admin_socket->register_command("release_ec_subwrite", asok_hook,
+				     "Releases the held ec subwrite");
+
+  r = admin_socket->register_command("ec_subwrite_held", asok_hook,
+				     "Returns if an ec subwrite is currently held");
+
   ceph_assert(r == 0);
   r = admin_socket->register_command("flush_journal",
                                      asok_hook,
@@ -9801,6 +9829,8 @@ void OSD::dequeue_op(
   ThreadPool::TPHandle &handle)
 {
   const Message *m = op->get_req();
+
+  dout(0) << "Jon: " << op->get_reqid() << " - " << op->get_desc() << dendl;
 
   FUNCTRACE(cct);
   OID_EVENT_TRACE_WITH_MSG(m, "DEQUEUE_OP_BEGIN", false);

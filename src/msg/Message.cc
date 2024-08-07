@@ -222,9 +222,7 @@
 #include "messages/MNVMeofGwBeacon.h"
 #include "messages/MNVMeofGwMap.h"
 
-#ifdef WITH_BLKIN
 #include "Messenger.h"
-#endif
 
 #define DEBUGLVL  10    // debug level of output
 

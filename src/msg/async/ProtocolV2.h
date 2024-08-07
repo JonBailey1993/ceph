@@ -12,6 +12,8 @@
 
 class ProtocolV2 : public Protocol {
 private:
+  std::mutex m_ec_subwrite_mutex;
+
   enum State {
     NONE,
     START_CONNECT,
@@ -191,6 +193,7 @@ private:
   Ct<ProtocolV2> *ready();
 
   Ct<ProtocolV2> *handle_message();
+  Ct<ProtocolV2> *handle_message_2(Message* message, ceph_msg_header2 current_header, const size_t cur_msg_size, ceph_msg_header header);
   Ct<ProtocolV2> *throttle_message();
   Ct<ProtocolV2> *throttle_bytes();
   Ct<ProtocolV2> *throttle_dispatch_queue();
