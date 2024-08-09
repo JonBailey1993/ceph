@@ -1418,7 +1418,7 @@ CtPtr ProtocolV2::handle_message() {
     message = 0;
     state = READY;
     return CONTINUE(read_frame);
-  } else if (header.type == MSG_OSD_EC_WRITE) {
+  } else if (header.type == MSG_OSD_EC_WRITE && connection->get_messenger()->should_hold_next_ec_subwrite()) {
     connection->get_messenger()->hold_subwrite(message, current_header, cur_msg_size, header);
     message = 0;
     state = READY;

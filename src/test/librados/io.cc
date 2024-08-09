@@ -361,7 +361,7 @@ TEST_F(LibRadosIo, OverlappingIOsJon) {
   int up_primary = parse_json_object_for_value(osd_details_outstr, "up_primary")->get_int();
   json_spirit::Array osds = parse_json_object_for_value(osd_details_outstr, "up")->get_array();
 
-  unsigned int k = osds.size() - 1;
+  unsigned int k = osds.size();
   unsigned int m = 0;
 
   std::list<int> secondary;
@@ -405,15 +405,15 @@ TEST_F(LibRadosIo, OverlappingIOsJon) {
   std::atomic<bool> can_release;
   can_release.store(false);
 
-  std::thread write1_thread([&can_release](rados_ioctx_t ioctx, std::string object_id, char* buf, int double_bsize, int offset) {
+  std::thread write1_thread([&can_release](rados_ioctx_t ioctx, std::string object_id, char* buf, int bsize, int offset) {
     std::cout << "About to perform write 1" << std::endl;
-    int ret = rados_write(ioctx, object_id.c_str(), buf, double_bsize, offset);
+    int ret = rados_write(ioctx, object_id.c_str(), buf, bsize, offset);
     std::cout << "Recieved return code " << ret << " from write 1" << std::endl;
     ASSERT_EQ(true, can_release.load());
     ASSERT_EQ(0, ret);
   }, ioctx, object_id, buf1, double_bsize, offset1);
 
-  std::thread write2_thread([&send_osd_message, &parse_json_object_for_value, &can_release](rados_ioctx_t ioctx, std::string object_id, char* buf, int double_bsize, int offset, int osd){
+  std::thread write2_thread([&send_osd_message, &parse_json_object_for_value, &can_release](rados_ioctx_t ioctx, std::string object_id, char* buf, int bsize, int offset, int osd){
     string ec_subwrite_held_command = std::string(
       "{\"prefix\":\"ec_subwrite_held\",\
       \"format\":\"json\"}");
@@ -434,7 +434,7 @@ TEST_F(LibRadosIo, OverlappingIOsJon) {
     }
 
     std::cout << "About to perform write 2" << std::endl;
-    int ret = rados_write(ioctx, object_id.c_str(), buf, double_bsize, offset);
+    int ret = rados_write(ioctx, object_id.c_str(), buf, bsize, offset);
     std::cout << "Recieved return code " << ret << " from write 2" << std::endl;
     ASSERT_EQ(0, ret);
 
@@ -458,7 +458,7 @@ TEST_F(LibRadosIo, OverlappingIOsJon) {
   // std::cout << "Wrote " << std::string(buf2) << " to offset " << offset2 << std::endl;
 
   int read_ret = rados_read(ioctx, object_id.c_str(), buf3, double_bsize, offset3);
-  std::cout << "Read " << std::string(buf3) << " from offset " << offset1 << std::endl;
+  std::cout << "Read " << std::string(buf3) << " from offset " << offset3 << std::endl;
 
   std::cout << "Recieved return code " << read_ret << " from read" << std::endl;
   
@@ -771,7 +771,7 @@ TEST_F(LibRadosIoEC, OverlappingIOsJon) {
   string osd_details_cmd = std::string(
     "{\"prefix\": \"osd map\",\
       \"pool\":\"" + pool_name + "\",\
-      \"object\": \"" + erasure_code_profile + "\",\
+      \"object\": \"" + object_id + "\",\
       \"format\": \"json\"}");
   std::string osd_details_outstr = send_montior_message(osd_details_cmd, 0);
   int up_primary = parse_json_object_for_value(osd_details_outstr, "up_primary")->get_int();
@@ -818,15 +818,15 @@ TEST_F(LibRadosIoEC, OverlappingIOsJon) {
   std::atomic<bool> can_release;
   can_release.store(false);
 
-  std::thread write1_thread([&can_release](rados_ioctx_t ioctx, std::string object_id, char* buf, int double_bsize, int offset) {
+  std::thread write1_thread([&can_release](rados_ioctx_t ioctx, std::string object_id, char* buf, int bsize, int offset) {
     std::cout << "About to perform write 1" << std::endl;
-    int ret = rados_write(ioctx, object_id.c_str(), buf, double_bsize, offset);
+    int ret = rados_write(ioctx, object_id.c_str(), buf, bsize, offset);
     std::cout << "Recieved return code " << ret << " from write 1" << std::endl;
     ASSERT_EQ(true, can_release.load());
     ASSERT_EQ(0, ret);
   }, ioctx, object_id, buf1, double_bsize, offset1);
 
-  std::thread write2_thread([&send_osd_message, &parse_json_object_for_value, &can_release](rados_ioctx_t ioctx, std::string object_id, char* buf, int double_bsize, int offset, int osd){
+  std::thread write2_thread([&send_osd_message, &parse_json_object_for_value, &can_release](rados_ioctx_t ioctx, std::string object_id, char* buf, int bsize, int offset, int osd){
     string ec_subwrite_held_command = std::string(
       "{\"prefix\":\"ec_subwrite_held\",\
       \"format\":\"json\"}");
@@ -847,7 +847,7 @@ TEST_F(LibRadosIoEC, OverlappingIOsJon) {
     }
 
     std::cout << "About to perform read" << std::endl;
-    int ret = rados_write(ioctx, object_id.c_str(), buf, double_bsize, offset);
+    int ret = rados_write(ioctx, object_id.c_str(), buf, bsize, offset);
     std::cout << "Recieved return code " << ret << " from write 2" << std::endl;
     ASSERT_EQ(0, ret);
 
