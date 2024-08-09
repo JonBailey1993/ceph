@@ -284,11 +284,11 @@ TEST_F(LibRadosIo, OverlappingIOsJon) {
 
   char* buf0 = (char*)new char[double_bsize];
   char* buf1 = (char*)new char[double_bsize];
-  char* buf2 = (char*)new char[double_bsize];
+  char* buf2 = (char*)new char[bsize];
   char* buf3 = (char*)new char[double_bsize];
   
   int offset1 = 0;
-  int offset2 = offset1;
+  int offset2 = bsize/2;
   int offset3 = offset1;
 
   auto cleanup = [&] {
@@ -300,7 +300,7 @@ TEST_F(LibRadosIo, OverlappingIOsJon) {
 
   memset(buf0, 'a', double_bsize);
   memset(buf1, 'b', double_bsize);
-  memset(buf2, 'c', double_bsize);
+  memset(buf2, 'c', bsize);
 
   scope_guard<decltype(cleanup)> sg(std::move(cleanup));
 
@@ -449,7 +449,7 @@ TEST_F(LibRadosIo, OverlappingIOsJon) {
     std::string output;
     rc = send_osd_message(osd, release_ec_write_command, output);
     ASSERT_EQ(0, rc);
-  }, ioctx, object_id, buf2, double_bsize, offset2, secondary.front());
+  }, ioctx, object_id, buf2, bsize, offset2, secondary.front());
   
   write1_thread.join();
   write2_thread.join();
@@ -668,11 +668,11 @@ TEST_F(LibRadosIoEC, OverlappingIOsJon) {
 
   char* buf0 = (char*)new char[double_bsize];
   char* buf1 = (char*)new char[double_bsize];
-  char* buf2 = (char*)new char[double_bsize];
+  char* buf2 = (char*)new char[bsize];
   char* buf3 = (char*)new char[double_bsize];
   
   int offset1 = 0;
-  int offset2 = offset1;
+  int offset2 = bsize/2;
   int offset3 = offset1;
 
   auto cleanup = [&] {
@@ -684,7 +684,7 @@ TEST_F(LibRadosIoEC, OverlappingIOsJon) {
 
   memset(buf0, 'a', double_bsize);
   memset(buf1, 'b', double_bsize);
-  memset(buf2, 'c', double_bsize);
+  memset(buf2, 'c', bsize);
 
   scope_guard<decltype(cleanup)> sg(std::move(cleanup));
 
@@ -861,7 +861,7 @@ TEST_F(LibRadosIoEC, OverlappingIOsJon) {
     std::string output;
     rc = send_osd_message(osd, release_ec_write_command, output);
     ASSERT_EQ(0, rc);
-  }, ioctx, object_id, buf2, double_bsize, offset2, secondary.front());
+  }, ioctx, object_id, buf2, bsize, offset2, secondary.front());
   
   write1_thread.join();
   write2_thread.join();
