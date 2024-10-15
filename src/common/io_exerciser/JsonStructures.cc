@@ -1,6 +1,7 @@
 #include "JsonStructures.h"
 
 #include "common/ceph_json.h"
+#include "OpType.h"
 
 ceph::io_exerciser::json::JSONStructure
   ::JSONStructure(std::shared_ptr<ceph::Formatter> formatter) :
@@ -104,6 +105,146 @@ void ceph::io_exerciser::json::OSDMapReply::dump() const
   formatter->close_section();
 }
 
+ceph::io_exerciser::json::OSDPoolGetRequest
+  ::OSDPoolGetRequest(const std::string& pool_name,
+                      std::shared_ptr<ceph::Formatter> formatter) :
+  JSONStructure(formatter),
+  pool(pool_name)
+{
+
+}
+
+ceph::io_exerciser::json::OSDPoolGetRequest
+  ::OSDPoolGetRequest(JSONObj* obj,
+                      std::shared_ptr<ceph::Formatter> formatter) :
+  JSONStructure(formatter)
+{
+  decode_json(obj);
+}
+
+void ceph::io_exerciser::json::OSDPoolGetRequest::decode_json(JSONObj* obj) {
+  JSONDecoder::decode_json("prefix", prefix, obj);
+  JSONDecoder::decode_json("pool", pool, obj);
+  JSONDecoder::decode_json("var", var, obj);
+  JSONDecoder::decode_json("format", format, obj);
+}
+
+void ceph::io_exerciser::json::OSDPoolGetRequest::dump() const
+{
+  formatter->open_object_section("OSDPoolGetRequest");
+  ::encode_json("prefix", prefix, formatter.get());
+  ::encode_json("pool", pool, formatter.get());
+  ::encode_json("var", var, formatter.get());
+  ::encode_json("format", format, formatter.get());
+  formatter->close_section();
+}
+
+ceph::io_exerciser::json::OSDPoolGetReply
+  ::OSDPoolGetReply(JSONObj *obj,
+                    std::shared_ptr<ceph::Formatter> formatter) :
+  JSONStructure(obj, formatter)
+{
+  decode_json(obj);
+}
+
+void ceph::io_exerciser::json::OSDPoolGetReply::decode_json(JSONObj* obj) {
+  JSONDecoder::decode_json("erasure_code_profile", erasure_code_profile, obj);
+}
+
+void ceph::io_exerciser::json::OSDPoolGetReply::dump() const
+{
+  formatter->open_object_section("OSDPoolGetReply");
+  ::encode_json("erasure_code_profile", erasure_code_profile, formatter.get());
+  formatter->close_section();
+}
+
+ceph::io_exerciser::json::OSDECProfileGetRequest
+  ::OSDECProfileGetRequest(const std::string& profile_name,
+                           std::shared_ptr<ceph::Formatter> formatter) :
+  JSONStructure(formatter),
+  name(profile_name)
+{
+
+}
+
+ceph::io_exerciser::json::OSDECProfileGetRequest
+  ::OSDECProfileGetRequest(JSONObj* obj,
+                           std::shared_ptr<ceph::Formatter> formatter) :
+  JSONStructure(formatter)
+{
+  decode_json(obj);
+}
+
+void ceph::io_exerciser::json::OSDECProfileGetRequest::decode_json(JSONObj* obj) {
+  JSONDecoder::decode_json("prefix", prefix, obj);
+  JSONDecoder::decode_json("name", name, obj);
+  JSONDecoder::decode_json("format", format, obj);
+}
+
+void ceph::io_exerciser::json::OSDECProfileGetRequest::dump() const
+{
+  formatter->open_object_section("OSDECProfileGetRequest");
+  ::encode_json("prefix", prefix, formatter.get());
+  ::encode_json("name", name, formatter.get());
+  ::encode_json("format", format, formatter.get());
+  formatter->close_section();
+}
+
+ceph::io_exerciser::json::OSDECProfileGetReply
+  ::OSDECProfileGetReply(JSONObj* obj,
+                         std::shared_ptr<ceph::Formatter> formatter) :
+  JSONStructure(formatter)
+{
+  decode_json(obj);
+}
+
+void ceph::io_exerciser::json::OSDECProfileGetReply::decode_json(JSONObj* obj) {
+  JSONDecoder::decode_json("crush-device-class", crush_device_class, obj);
+  JSONDecoder::decode_json("crush-failure-domain", crush_failure_domain, obj);
+  JSONDecoder::decode_json("crush-num-failure-domains",
+                           crush_num_failure_domains,
+                           obj);
+  JSONDecoder::decode_json("crush-osds-per-failure-domain",
+                           crush_osds_per_failure_domain,
+                           obj);
+  JSONDecoder::decode_json("crush-root", crush_root, obj);
+  JSONDecoder::decode_json("jerasure-per-chunk-alignment",
+                           jerasure_per_chunk_alignment,
+                           obj);
+  JSONDecoder::decode_json("k", k, obj);
+  JSONDecoder::decode_json("m", m, obj);
+  JSONDecoder::decode_json("plugin", plugin, obj);
+  JSONDecoder::decode_json("technique", technique, obj);
+  JSONDecoder::decode_json("w", w, obj);
+}
+
+void ceph::io_exerciser::json::OSDECProfileGetReply::dump() const
+{
+  formatter->open_object_section("OSDECProfileGetReply");
+  ::encode_json("crush-device-class",
+                crush_device_class,
+                formatter.get());
+  ::encode_json("crush-failure-domain",
+                crush_failure_domain,
+                formatter.get());
+  ::encode_json("crush-num-failure-domains",
+                crush_num_failure_domains,
+                formatter.get());
+  ::encode_json("crush-osds-per-failure-domain",
+                crush_osds_per_failure_domain,
+                formatter.get());
+  ::encode_json("crush-root", crush_root, formatter.get());
+  ::encode_json("jerasure-per-chunk-alignment",
+                jerasure_per_chunk_alignment,
+                formatter.get());
+  ::encode_json("k", k, formatter.get());
+  ::encode_json("m", m, formatter.get());
+  ::encode_json("plugin", plugin, formatter.get());
+  ::encode_json("technique", technique, formatter.get());
+  ::encode_json("w", w, formatter.get());
+  formatter->close_section();
+}
+
 ceph::io_exerciser::json::OSDECProfileSetRequest
   ::OSDECProfileSetRequest(const std::string& name,
                            std::vector<std::string> profile,
@@ -170,7 +311,7 @@ void ceph::io_exerciser::json::OSDECPoolCreateRequest::decode_json(JSONObj* obj)
 
 void ceph::io_exerciser::json::OSDECPoolCreateRequest::dump() const
 {
-  formatter->open_object_section("OSDECProfileSetRequest");
+  formatter->open_object_section("OSDECPoolCreateRequest");
   ::encode_json("prefix", prefix, formatter.get());
   ::encode_json("pool", pool, formatter.get());
   ::encode_json("pool_type", pool_type, formatter.get());
@@ -373,12 +514,18 @@ ceph::io_exerciser::json::InjectECErrorRequest
 {
   switch(injectOpType)
   {
-    case InjectOpType::Read:
+    case InjectOpType::ReadEIO:
+      [[ fallthrough ]];
+    case InjectOpType::ReadMissingShard:
       prefix = "injectecreaderr";
       break;
-    case InjectOpType::Write:
+    case InjectOpType::WriteFailAndRollback:
+      [[ fallthrough ]];
+    case InjectOpType::WriteOSDAbort:
       prefix = "injectecwriteerr";
       break;
+    default:
+      ceph_abort_msg("Invalid OP type to inject");
   }
 }
 
@@ -423,12 +570,18 @@ ceph::io_exerciser::json::InjectECClearErrorRequest
 {
   switch(injectOpType)
   {
-    case InjectOpType::Read:
+        case InjectOpType::ReadEIO:
+      [[ fallthrough ]];
+    case InjectOpType::ReadMissingShard:
       prefix = "injectecclearreaderr";
       break;
-    case InjectOpType::Write:
+    case InjectOpType::WriteFailAndRollback:
+      [[ fallthrough ]];
+    case InjectOpType::WriteOSDAbort:
       prefix = "injectecclearwriteerr";
       break;
+    default:
+      ceph_abort_msg("Invalid OP type to inject");
   }
 }
 

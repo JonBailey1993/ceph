@@ -24,6 +24,7 @@
 #include "common/io_exerciser/RadosIo.h"
 #include "common/io_exerciser/IoOp.h"
 #include "common/io_exerciser/IoSequence.h"
+#include "common/io_exerciser/EcIoSequence.h"
 #include "common/io_exerciser/JsonStructures.h"
 
 #include "json_spirit/json_spirit.h"
@@ -391,12 +392,36 @@ const std::string ceph::io_sequence::tester::SelectECPool::choose()
 {
   std::pair<int,int> value;
   if (!skm.isForced() && force_value.has_value()) {
+    int rc;
+    bufferlist inbl, outbl;
+    auto formatter = std::make_shared<JSONFormatter>(false);
+
+    ceph::io_exerciser::json::OSDPoolGetRequest osdPoolGetRequest(*force_value, formatter);
+    rc = rados.mon_command(osdPoolGetRequest.encode_json(), inbl, &outbl, nullptr);
+    ceph_assert(rc == 0);
+
+    JSONParser p;
+    bool success = p.parse(outbl.c_str(), outbl.length());
+    ceph_assert(success);
+
+    ceph::io_exerciser::json::OSDPoolGetReply osdPoolGetReply(&p, formatter);
+
+    ceph::io_exerciser::json::OSDECProfileGetRequest osdECProfileGetRequest(osdPoolGetReply.erasure_code_profile, formatter);
+    rc = rados.mon_command(osdECProfileGetRequest.encode_json(), inbl, &outbl, nullptr);
+    ceph_assert(rc == 0);
+
+    success = p.parse(outbl.c_str(), outbl.length());
+    ceph_assert(success);
+
+    ceph::io_exerciser::json::OSDECProfileGetReply reply(&p, formatter);
+    k = reply.k;
+    m = reply.m;
     return *force_value;
   } else {
     value = skm.choose();
   }
-  int k = value.first;
-  int m = value.second;
+  k = value.first;
+  m = value.second;
 
   const std::string plugin = std::string(spl.choose());
   const uint64_t chunk_size = scs.choose();
@@ -533,6 +558,9 @@ ceph::io_sequence::tester::TestObject::TestObject( const std::string oid,
                                                                         rng());
   } else {
     const std::string pool = spo.choose();
+    poolK = spo.getChosenK();
+    poolM = spo.getChosenM();
+
     int threads = snt.choose();
 
     bufferlist inbl, outbl;
@@ -574,8 +602,10 @@ ceph::io_sequence::tester::TestObject::TestObject( const std::string oid,
   obj_size_range = sos.choose();
   seq_range = ssr.choose();
   curseq = seq_range.first;
-  seq = ceph::io_exerciser::IoSequence::generate_sequence(curseq,
+  seq = ceph::io_exerciser::EcIoSequence::generate_sequence(curseq,
                                                           obj_size_range,
+                                                          poolK,
+                                                          poolM,
                                                           seqseed.value_or(rng()));
   op = seq->next();
   done = false;
@@ -619,8 +649,9 @@ bool ceph::io_sequence::tester::TestObject::next()
       }
       else
       {
-        seq = ceph::io_exerciser::IoSequence::generate_sequence(curseq,
+        seq = ceph::io_exerciser::EcIoSequence::generate_sequence(curseq,
                                                                 obj_size_range,
+                                                                poolK, poolM,
                                                                 seqseed.value_or(rng()));
         dout(0) << "== " << exerciser_model->get_oid() << " "
                 << curseq << " " << seq->get_name()
@@ -718,8 +749,10 @@ void ceph::io_sequence::tester::TestRunner::list_sequence()
         s < ceph::io_exerciser::Sequence::SEQUENCE_END; ++s)
   {
     std::unique_ptr<ceph::io_exerciser::IoSequence> seq =
-    ceph::io_exerciser::IoSequence::generate_sequence(s,
+    ceph::io_exerciser::EcIoSequence::generate_sequence(s,
                                                       obj_size_range,
+                                                      spo.getChosenK(),
+                                                      spo.getChosenM(),
                                                       seqseed.value_or(rng()));
     dout(0) << s << " " << seq->get_name() << dendl;
   }
@@ -822,6 +855,9 @@ bool ceph::io_sequence::tester::TestRunner::run_interactive_test()
   else
   {
     const std::string pool = spo.choose();
+
+    std::cout << "Pool name: " << pool << std::endl;
+    std::cout << "Object name: " << object_name << std::endl;
 
     bufferlist inbl, outbl;
 

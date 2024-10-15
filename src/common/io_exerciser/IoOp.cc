@@ -276,52 +276,52 @@ std::unique_ptr<TripleWriteOp> TripleWriteOp::generate(uint64_t offset1, uint64_
 }
 
 SingleFailedWriteOp::SingleFailedWriteOp(uint64_t offset, uint64_t length) :
-   ReadWriteOp<OpType::FailedWrite, 1>({offset}, {length})
- {
+  ReadWriteOp<OpType::FailedWrite, 1>({offset}, {length})
+{
 
- }
+}
 
- std::unique_ptr<SingleFailedWriteOp> SingleFailedWriteOp::generate(uint64_t offset,
-                                                                    uint64_t length)
- {
-   return std::make_unique<SingleFailedWriteOp>(offset, length);
- }
+std::unique_ptr<SingleFailedWriteOp> SingleFailedWriteOp::generate(uint64_t offset,
+                                                                   uint64_t length)
+{
+  return std::make_unique<SingleFailedWriteOp>(offset, length);
+}
 
- DoubleFailedWriteOp::DoubleFailedWriteOp(uint64_t offset1, uint64_t length1,
-                                    uint64_t offset2, uint64_t length2) :
-   ReadWriteOp<OpType::FailedWrite2, 2>({offset1, offset2}, {length1, length2})
- {
+DoubleFailedWriteOp::DoubleFailedWriteOp(uint64_t offset1, uint64_t length1,
+                                   uint64_t offset2, uint64_t length2) :
+  ReadWriteOp<OpType::FailedWrite2, 2>({offset1, offset2}, {length1, length2})
+{
 
- }
+}
 
- std::unique_ptr<DoubleFailedWriteOp> DoubleFailedWriteOp::generate(uint64_t offset1,
-                                                                    uint64_t length1,
-                                                                    uint64_t offset2,
-                                                                    uint64_t length2)
- {
-   return std::make_unique<DoubleFailedWriteOp>(offset1, length1, offset2, length2);
- }
+std::unique_ptr<DoubleFailedWriteOp> DoubleFailedWriteOp::generate(uint64_t offset1,
+                                                                   uint64_t length1,
+                                                                   uint64_t offset2,
+                                                                   uint64_t length2)
+{
+  return std::make_unique<DoubleFailedWriteOp>(offset1, length1, offset2, length2);
+}
 
- TripleFailedWriteOp::TripleFailedWriteOp(uint64_t offset1, uint64_t length1,
-                                    uint64_t offset2, uint64_t length2,
-                                    uint64_t offset3, uint64_t length3) :
-   ReadWriteOp<OpType::FailedWrite3, 3>({offset1, offset2, offset3},
-                                        {length1, length2, length3})
- {
+TripleFailedWriteOp::TripleFailedWriteOp(uint64_t offset1, uint64_t length1,
+                                   uint64_t offset2, uint64_t length2,
+                                   uint64_t offset3, uint64_t length3) :
+  ReadWriteOp<OpType::FailedWrite3, 3>({offset1, offset2, offset3},
+                                       {length1, length2, length3})
+{
 
- }
+}
 
- std::unique_ptr<TripleFailedWriteOp> TripleFailedWriteOp::generate(uint64_t offset1,
-                                                                    uint64_t length1,
-                                                                    uint64_t offset2,
-                                                                    uint64_t length2,
-                                                                    uint64_t offset3,
-                                                                    uint64_t length3)
- {
-   return std::make_unique<TripleFailedWriteOp>(offset1, length1,
-                                                offset2, length2,
-                                                offset3, length3);
- }
+std::unique_ptr<TripleFailedWriteOp> TripleFailedWriteOp::generate(uint64_t offset1,
+                                                                   uint64_t length1,
+                                                                   uint64_t offset2,
+                                                                   uint64_t length2,
+                                                                   uint64_t offset3,
+                                                                   uint64_t length3)
+{
+  return std::make_unique<TripleFailedWriteOp>(offset1, length1,
+                                               offset2, length2,
+                                               offset3, length3);
+}
 
 template <ceph::io_exerciser::OpType opType>
 ceph::io_exerciser::InjectErrorOp<opType>
@@ -366,12 +366,6 @@ std::unique_ptr<ceph::io_exerciser::InjectReadErrorOp> ceph::io_exerciser
   return std::make_unique<InjectReadErrorOp>(shard, type, when, duration);
 }
 
-constexpr std::string_view ceph::io_exerciser::InjectReadErrorOp
-  ::get_inject_type_string() const
-{
-  return "read";
-}
-
 ceph::io_exerciser::InjectWriteErrorOp::InjectWriteErrorOp(int shard,
                                                            const std::optional<uint64_t>& type,
                                                            const std::optional<uint64_t>& when,
@@ -388,12 +382,6 @@ std::unique_ptr<ceph::io_exerciser::InjectWriteErrorOp> ceph::io_exerciser
                                  const std::optional<uint64_t>& duration)
 {
   return std::make_unique<InjectWriteErrorOp>(shard, type, when, duration);
-}
-
-constexpr std::string_view ceph::io_exerciser::InjectWriteErrorOp
-  ::get_inject_type_string() const
-{
-  return "write";
 }
 
 
@@ -429,12 +417,6 @@ std::unique_ptr<ceph::io_exerciser::ClearReadErrorInjectOp> ceph::io_exerciser
   return std::make_unique<ClearReadErrorInjectOp>(shard, type);
 }
 
-constexpr std::string_view ceph::io_exerciser::ClearReadErrorInjectOp
-  ::get_inject_type_string() const
-{
-  return "read";
-}
-
 ceph::io_exerciser::ClearWriteErrorInjectOp::ClearWriteErrorInjectOp(int shard,
                                                                      const std::optional<uint64_t>& type) :
   ClearErrorInjectOp<OpType::ClearWriteErrorInject>(shard, type)
@@ -446,10 +428,4 @@ std::unique_ptr<ceph::io_exerciser::ClearWriteErrorInjectOp> ceph::io_exerciser
   ::ClearWriteErrorInjectOp::generate(int shard, const std::optional<uint64_t>& type)
 {
   return std::make_unique<ClearWriteErrorInjectOp>(shard, type);
-}
-
-constexpr std::string_view ceph::io_exerciser::ClearWriteErrorInjectOp
-  ::get_inject_type_string() const
-{
-  return "write";
 }

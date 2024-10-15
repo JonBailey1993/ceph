@@ -146,38 +146,38 @@ namespace ceph {
                                                        uint64_t length3);
     };
 
-        class SingleFailedWriteOp : public ReadWriteOp<OpType::FailedWrite, 1>
-     {
-       public:
-         SingleFailedWriteOp(uint64_t offset, uint64_t length);
-         static std::unique_ptr<SingleFailedWriteOp> generate(uint64_t offset,
-                                                              uint64_t length);
-     };
+    class SingleFailedWriteOp : public ReadWriteOp<OpType::FailedWrite, 1>
+    {
+      public:
+        SingleFailedWriteOp(uint64_t offset, uint64_t length);
+        static std::unique_ptr<SingleFailedWriteOp> generate(uint64_t offset,
+                                                             uint64_t length);
+    };
 
-     class DoubleFailedWriteOp : public ReadWriteOp<OpType::FailedWrite2, 2>
-     {
-       public:
-         DoubleFailedWriteOp(uint64_t offset1, uint64_t length1,
-                             uint64_t offset2, uint64_t length2);
-         static std::unique_ptr<DoubleFailedWriteOp> generate(uint64_t offset1,
-                                                              uint64_t length1,
-                                                              uint64_t offset2,
-                                                              uint64_t length2);
-     };
+    class DoubleFailedWriteOp : public ReadWriteOp<OpType::FailedWrite2, 2>
+    {
+      public:
+        DoubleFailedWriteOp(uint64_t offset1, uint64_t length1,
+                            uint64_t offset2, uint64_t length2);
+        static std::unique_ptr<DoubleFailedWriteOp> generate(uint64_t offset1,
+                                                             uint64_t length1,
+                                                             uint64_t offset2,
+                                                             uint64_t length2);
+    };
 
-     class TripleFailedWriteOp : public ReadWriteOp<OpType::FailedWrite3, 3>
-     {
-       public:
-         TripleFailedWriteOp(uint64_t offset1, uint64_t length1,
-                             uint64_t offset2, uint64_t length2,
-                             uint64_t offset3, uint64_t length3);
-         static std::unique_ptr<TripleFailedWriteOp> generate(uint64_t offset1,
-                                                              uint64_t length1,
-                                                              uint64_t offset2,
-                                                              uint64_t length2,
-                                                              uint64_t offset3,
-                                                              uint64_t length3);
-     };
+    class TripleFailedWriteOp : public ReadWriteOp<OpType::FailedWrite3, 3>
+    {
+      public:
+        TripleFailedWriteOp(uint64_t offset1, uint64_t length1,
+                            uint64_t offset2, uint64_t length2,
+                            uint64_t offset3, uint64_t length3);
+        static std::unique_ptr<TripleFailedWriteOp> generate(uint64_t offset1,
+                                                             uint64_t length1,
+                                                             uint64_t offset2,
+                                                             uint64_t length2,
+                                                             uint64_t offset3,
+                                                             uint64_t length3);
+    };
 
     template <ceph::io_exerciser::OpType opType>
     class InjectErrorOp : public TestOp<opType>
@@ -213,7 +213,8 @@ namespace ceph {
                                                            const std::optional<uint64_t>& duration);
 
       protected:
-        constexpr inline std::string_view get_inject_type_string() const override;
+        inline constexpr std::string_view get_inject_type_string() const override
+          { return "read"; }
     };
 
     class InjectWriteErrorOp : public InjectErrorOp<OpType::InjectWriteError>
@@ -230,7 +231,8 @@ namespace ceph {
                                                             const std::optional<uint64_t>& duration);
 
       protected:
-        constexpr inline std::string_view get_inject_type_string() const override;
+        inline constexpr std::string_view get_inject_type_string() const override
+          { return "write"; }
     };
 
     template <ceph::io_exerciser::OpType opType>
@@ -257,7 +259,8 @@ namespace ceph {
                                                                 const std::optional<uint64_t>& type);
 
       protected:
-        constexpr inline std::string_view get_inject_type_string() const override;
+        inline constexpr std::string_view get_inject_type_string() const override
+          { return "read"; }
     };
 
     class ClearWriteErrorInjectOp : public ClearErrorInjectOp<OpType::ClearWriteErrorInject>
@@ -269,7 +272,8 @@ namespace ceph {
                                                                  const std::optional<uint64_t>& type);
 
       protected:
-        constexpr inline std::string_view get_inject_type_string() const override;
+        inline constexpr std::string_view get_inject_type_string() const override
+          { return "write"; }
     };
   }
 }

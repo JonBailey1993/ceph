@@ -42,7 +42,8 @@ namespace ceph {
       SEQUENCE_SEQ7,
       SEQUENCE_SEQ8,
       SEQUENCE_SEQ9,
-      //
+      SEQUENCE_SEQ10,
+
       SEQUENCE_END,
       SEQUENCE_BEGIN = SEQUENCE_SEQ0
     };
@@ -111,7 +112,7 @@ namespace ceph {
       Seq1(std::pair<int,int> obj_size_range, int seed);
 
       std::string get_name() const override;
-      std::unique_ptr<IoOp> _next();
+      std::unique_ptr<IoOp> _next() override;
 
     private:
       int count;

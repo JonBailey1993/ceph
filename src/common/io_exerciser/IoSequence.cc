@@ -38,6 +38,9 @@ std::ostream& ceph::io_exerciser::operator<<(std::ostream& os, const Sequence& s
     case Sequence::SEQUENCE_SEQ9:
       os << "SEQUENCE_SEQ9";
       break;
+    case Sequence::SEQUENCE_SEQ10:
+      os << "SEQUENCE_SEQ10";
+      break;
     case Sequence::SEQUENCE_END:
       os << "SEQUENCE_END";
       break;
@@ -70,6 +73,10 @@ std::unique_ptr<IoSequence> IoSequence::generate_sequence(Sequence s,
       return std::make_unique<Seq8>(obj_size_range, seed);
     case Sequence::SEQUENCE_SEQ9:
       return std::make_unique<Seq9>(obj_size_range, seed);
+    case Sequence::SEQUENCE_SEQ10:
+      ceph_abort_msg("Sequence 10 only supported for erasure coded pools "
+                     "through the EcIoSequence interface");
+      return nullptr;
     default:
       break;
   }
@@ -77,7 +84,7 @@ std::unique_ptr<IoSequence> IoSequence::generate_sequence(Sequence s,
 }
 
 IoSequence::IoSequence(std::pair<int,int> obj_size_range,
-                                           int seed) :
+                       int seed) :
         min_obj_size(obj_size_range.first), max_obj_size(obj_size_range.second),
         create(true), barrier(false), done(false), remove(false),
         obj_size(min_obj_size), step(-1), seed(seed)

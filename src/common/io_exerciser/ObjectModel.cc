@@ -188,24 +188,24 @@ void ObjectModel::applyIoOp(IoOp& op)
   }
   break;
   case OpType::FailedWrite:
-   {
-     ceph_assert(created);
-     SingleWriteOp& writeOp = static_cast<SingleWriteOp&>(op);
-     verify_failed_write_and_record(writeOp);
-   }
-   break;
-   case OpType::FailedWrite2:
-   {
-     DoubleWriteOp& writeOp = static_cast<DoubleWriteOp&>(op);
-     verify_failed_write_and_record(writeOp);
-   }
-   break;
-   case OpType::FailedWrite3:
-   {
-     TripleWriteOp& writeOp = static_cast<TripleWriteOp&>(op);
-     verify_failed_write_and_record(writeOp);
-   }
-   break;
+  {
+    ceph_assert(created);
+    SingleWriteOp& writeOp = static_cast<SingleWriteOp&>(op);
+    verify_failed_write_and_record(writeOp);
+  }
+  break;
+  case OpType::FailedWrite2:
+  {
+    DoubleWriteOp& writeOp = static_cast<DoubleWriteOp&>(op);
+    verify_failed_write_and_record(writeOp);
+  }
+  break;
+  case OpType::FailedWrite3:
+  {
+    TripleWriteOp& writeOp = static_cast<TripleWriteOp&>(op);
+    verify_failed_write_and_record(writeOp);
+  }
+  break;
   default:
     break;
   }
