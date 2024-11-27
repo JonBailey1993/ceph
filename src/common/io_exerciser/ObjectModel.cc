@@ -66,19 +66,21 @@ void ObjectModel::applyIoOp(IoOp& op) {
        &num_io = num_io, &reads = reads,
        &writes = writes]<OpType opType, int N>(ReadWriteOp<opType, N> writeOp) {
         ceph_assert(created);
-        for (int i = 0; i < N; i++) {
-          // Not allowed: write overlapping with parallel read or write
-          ceph_assert(!reads.intersects(writeOp.offset[i], writeOp.length[i]));
-          ceph_assert(!writes.intersects(writeOp.offset[i], writeOp.length[i]));
-          writes.union_insert(writeOp.offset[i], writeOp.length[i]);
-          ceph_assert(writeOp.offset[i] + writeOp.length[i] <= contents.size());
-          std::generate(std::execution::seq,
-                        std::next(contents.begin(), writeOp.offset[i]),
-                        std::next(contents.begin(),
-                                  writeOp.offset[i] + writeOp.length[i]),
-                        generate_random);
-        }
-        num_io++;
+    for (int i = 0; i < N; i++)
+    {
+      // Not allowed: write overlapping with parallel read or write
+      ceph_assert(!reads.intersects(writeOp.offset[i], writeOp.length[i]));
+      ceph_assert(!writes.intersects(writeOp.offset[i], writeOp.length[i]));
+      writes.union_insert(writeOp.offset[i], writeOp.length[i]);
+      if (writeOp.offset[i] + writeOp.length[i] > contents.size()) {
+	contents.resize(writeOp.offset[i] + writeOp.length[i]);
+      }
+      std::generate(std::execution::seq,
+                    std::next(contents.begin(), writeOp.offset[i]),
+                    std::next(contents.begin(), writeOp.offset[i] + writeOp.length[i]),
+                    generate_random);
+    }
+    num_io++;
       };
 
   auto verify_failed_write_and_record =
@@ -148,6 +150,14 @@ void ObjectModel::applyIoOp(IoOp& op) {
       TripleWriteOp& writeOp = static_cast<TripleWriteOp&>(op);
       verify_write_and_record_and_generate_seed(writeOp);
     } break;
+    case OpType::Append:
+    {
+      ceph_assert(created);
+      SingleAppendOp& appendOp = static_cast<SingleAppendOp&>(op);
+      appendOp.offset[0] = contents.size();
+      verify_write_and_record_and_generate_seed(appendOp);
+    } break;
+
     case OpType::FailedWrite: {
       ceph_assert(created);
       SingleWriteOp& writeOp = static_cast<SingleWriteOp&>(op);
