@@ -442,6 +442,9 @@ public:
   bool supports_partial_writes() const {
     return (plugin_flags & ErasureCodeInterface::FLAG_EC_PLUGIN_PARTIAL_WRITE_OPTIMIZATION) != 0;
   }
+  bool supports_encode_decode_crcs() const {
+    return (plugin_flags & ErasureCodeInterface::FLAG_EC_PLUGIN_ENCODE_CRCS_TO_PARITY_CRCS) != 0;
+  }
   uint64_t get_stripe_width() const {
     return stripe_width;
   }

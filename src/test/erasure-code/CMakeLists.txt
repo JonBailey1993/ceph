@@ -62,23 +62,22 @@ target_link_libraries(unittest_erasure_code
   ceph-common
   )
 
-if(WITH_EC_ISA_PLUGIN)
-# unittest_erasure_code_plugins
+if(WITH_EC_ISA_PLUGIN)# unittest_erasure_code_plugins
 add_executable(unittest_erasure_code_plugins
   TestErasureCodePlugins.cc
+  ${CMAKE_SOURCE_DIR}/src/erasure-code/ErasureCode.cc
   $<TARGET_OBJECTS:unit-main>
   )
 add_ceph_unittest(unittest_erasure_code_plugins)
-add_dependencies(unittest_erasure_code_plugins
+target_link_libraries(unittest_erasure_code_plugins
+  global
+  ${CMAKE_DL_LIBS}
+  ceph-common
   ec_jerasure
   ec_isa
   ec_lrc
   ec_shec
   ec_clay)
-target_link_libraries(unittest_erasure_code_plugins
-  global
-  ${CMAKE_DL_LIBS}
-  ceph-common)
 endif(WITH_EC_ISA_PLUGIN)
 
 # unittest_erasure_code_plugin_jerasure
