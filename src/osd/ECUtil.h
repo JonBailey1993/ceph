@@ -489,6 +489,9 @@ public:
   bool supports_parity_delta_writes() const {
     return (plugin_flags & ErasureCodeInterface::FLAG_EC_PLUGIN_PARITY_DELTA_OPTIMIZATION) != 0;
   }
+  bool supports_encode_decode_crcs() const {
+    return (plugin_flags & ErasureCodeInterface::FLAG_EC_PLUGIN_CRC_ENCODE_DECODE_SUPPORT) != 0;
+  }
   uint64_t get_stripe_width() const {
     return stripe_width;
   }
