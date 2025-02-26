@@ -8,7 +8,13 @@
 #include "erasure-code/ErasureCodePlugin.h"
 #include "global/global_context.h"
 #include "common/config_proxy.h"
+#include "include/buffer.h"
+#include "osd/ECTypes.h"
 #include "gtest/gtest.h"
+
+#include <set>
+#include <map>
+
 using namespace std;
 class PluginTest: public ::testing::TestWithParam<const char *> {
 public:
@@ -380,7 +386,7 @@ TEST_P(PluginTest,ParityDelta_MultipleDeltaMultipleParity)
   }
   shard_id_map<bufferlist> old_encoded(get_k_plus_m());
   erasure_code->encode(want_to_encode, old_bl, &old_encoded);
-  
+
   bufferlist new_bl;
   for (unsigned int i = 0; i < get_k(); i++) {
     generate_chunk(new_bl);
@@ -460,6 +466,123 @@ TEST_P(PluginTest,SubChunkSupport)
         ErasureCodeInterface::FLAG_EC_PLUGIN_REQUIRE_SUB_CHUNKS) != 0);
   }
 }
+TEST_P(PluginTest,CRCEncodeDecodeSupport)
+{
+  initialize();
+
+  shard_id_set want_to_encode;
+  for (shard_id_t i; i < get_k_plus_m(); ++i) {
+    want_to_encode.insert(i);
+  }
+  // Generate random data to encode
+  bufferlist initial_bl;
+  for (unsigned int i = 0; i < get_k(); ++i) {
+    generate_chunk(initial_bl);
+  }
+
+  // Calculate CRCs for the random data
+  bufferlist initial_bl_hashes;
+  for (bufferlist::iterator it = initial_bl.begin(); it != initial_bl.end();)
+  {
+    unsigned int crc = it.crc32c(chunk_size, 0);
+    unsigned length = sizeof(crc);
+    char crc_bytes[length];
+    for (int i = 0; i < length; i++)
+    {
+      crc_bytes[i] = crc >> (8*(length-i-1)) & 0xFF;
+    }
+    ceph::bufferptr b = ceph::buffer::create_aligned(chunk_size, 4096);
+    b.copy_in(0, length, crc_bytes);
+    // std::cout << "appending " << HexArrayToStr(crc_bytes, length) << std::endl;
+    initial_bl_hashes.append(b);
+  }
+
+  // Encode data and get back data + parity chunks
+  shard_id_map<bufferlist> encoded(get_k_plus_m());
+  erasure_code->encode(want_to_encode, initial_bl, &encoded);
+
+  // Encode CRCs to get back the data + parity CRCs
+  shard_id_map<bufferlist> encoded_hashes(get_k_plus_m());
+  erasure_code->encode(want_to_encode, initial_bl_hashes, &encoded_hashes);
+
+  // Calculate CRCs for the new data and new CRCs and compare first parity shard
+  bool different = false;
+  auto it = encoded.begin();
+  auto hash_it = encoded_hashes.begin();
+  int shard_num = 0;
+  std::vector<shard_id_t> chunk_mapping = erasure_code->get_chunk_mapping();
+  for (;it != encoded.end();)
+  {
+    shard_id_t shard_id = (chunk_mapping.size() > shard_num) ? chunk_mapping[shard_num] : shard_id_t(shard_num);
+    // Encoding only works for the first coding shard, so thats all we test here
+    if (shard_id < get_k() + 1)
+    {
+      unsigned int crc = it->second.crc32c(0);
+      unsigned length = sizeof(crc);
+      int crc2 = 0;
+      for (int i = 0; i < length; i++)
+      {
+        crc2 |= ((hash_it->second.c_str()[i] & 0xFF) << (8*(length-i-1)));
+      }
+
+      if (crc != crc2) different = true;
+    }
+
+    it++;
+    hash_it++;
+    shard_num++;
+  }
+
+  // Decode CRCs as if 1 to m-1 data CRCs are missing and assert decoded CRC is equal to missing CRC
+  for (raw_shard_id_t missing_raw_shard_id{0}; missing_raw_shard_id.id < get_k(); ++missing_raw_shard_id)
+  {
+    shard_id_t missing_shard_id = (chunk_mapping.size() > shard_num) ? chunk_mapping[missing_raw_shard_id.id] : shard_id_t{missing_raw_shard_id.id};
+
+    shard_id_set need;
+    need.insert(missing_shard_id);
+    shard_id_map<bufferlist> chunks(get_k_plus_m());
+    // Create a map of all buffers except the one we want to be missing
+    for (raw_shard_id_t raw_shard_id{0}; raw_shard_id.id < get_k_plus_m(); ++raw_shard_id)
+    {
+      shard_id_t shard_id = (chunk_mapping.size() > shard_num) ? chunk_mapping[raw_shard_id.id] : shard_id_t{raw_shard_id.id};
+
+      if (shard_id != missing_shard_id)
+      {
+        chunks.insert(shard_id,encoded_hashes[shard_id]);
+      }
+    }
+    shard_id_map<bufferlist> out_bls(get_k_plus_m());
+    int r = erasure_code->decode(need, chunks, &out_bls, chunk_size);
+
+    EXPECT_EQ(r, 0);
+
+    // Check the missing shard has been decoded correctly
+    int crc = 0;
+    for (int j = 0; j < 4; j++)
+    {
+      crc |= ((out_bls[missing_shard_id].c_str()[j] & 0xFF) << (8*(4-j-1)));
+    }
+
+    auto it = initial_bl_hashes.buffers().begin();
+    std::advance(it, missing_raw_shard_id.id);
+    int crc2 = 0;
+    for (int j = 0; j < 4; j++)
+    {
+      crc2 |= ((it->c_str()[j] & 0xFF) << (8*(4-j-1)));
+    }
+    std::cout << std::hex << std::setw(8) << crc << " == " << crc2 << std::endl;
+
+    different = different | (crc != crc2);
+  }
+
+  if (erasure_code->get_supported_optimizations() &
+      ErasureCodeInterface::FLAG_EC_PLUGIN_CRC_ENCODE_DECODE_SUPPORT) {
+      // Plugin should not have FLAG_EC_PLUGIN_CRC_ENCODE_DECODE_SUPPORT enabled, this
+      // failure proves that it can cause a data integrity issue
+      EXPECT_EQ(different, false);
+    }
+}
+
 INSTANTIATE_TEST_SUITE_P(
   PluginTests,
   PluginTest,
