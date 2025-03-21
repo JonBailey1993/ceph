@@ -319,12 +319,65 @@ public:
     return legacy.get_ec_data_chunk_count();
   }
 
+  unsigned get_ec_stripe_width() const override {
+    if (is_optimized()) {
+      return optimized.get_ec_stripe_width();
+    }
+    return legacy.get_ec_stripe_width();
+  }
+
   int get_ec_stripe_chunk_size() const override
   {
     if (is_optimized()) {
       return optimized.get_ec_stripe_chunk_size();
     }
     return legacy.get_ec_stripe_chunk_size();
+  }
+
+  bool ec_can_decode(const shard_id_set &available_shards) const override {
+    if (is_optimized()) {
+      return optimized.ec_can_decode(available_shards);
+    }
+
+    // Convert into a set type supported by Legacy EC
+    std::set<int> available_shard_set{};
+    for (auto &shard_id : available_shards) {
+      available_shard_set.insert(shard_id.id);
+    }
+
+    return legacy.ec_can_decode(available_shard_set);
+  }
+
+  shard_id_map<bufferlist> ec_encode_acting_set(const bufferlist chunks,
+                                                int chunk_size) const override {
+    if (is_optimized()) {
+      return optimized.ec_encode_acting_set(chunks, chunk_size);
+    }
+    std::map<int, bufferlist> encoded_map =
+        legacy.ec_encode_acting_set(chunks, chunk_size);
+    shard_id_map<bufferlist> encoded(encoded_map.size());
+    for (const auto &[shard_id, bufferlist] : encoded_map) {
+      encoded[shard_id_t(shard_id)] = bufferlist;
+    }
+    return encoded;
+  }
+
+  shard_id_map<bufferlist> ec_decode_acting_set(
+      const shard_id_map<bufferlist> &chunks, int chunk_size) const override {
+    if (is_optimized()) {
+      return optimized.ec_decode_acting_set(chunks, chunk_size);
+    }
+    std::map<int, bufferlist> chunk_map;
+    for (const auto &[shard_id, bufferlist] : chunks) {
+      chunk_map[shard_id.id] = bufferlist;
+    }
+    std::map<int, bufferlist> decoded_map =
+        legacy.ec_decode_acting_set(chunk_map, chunk_size);
+    shard_id_map<bufferlist> decoded(decoded_map.size());
+    for (const auto &[shard_id, bufferlist] : decoded_map) {
+      decoded[shard_id_t(shard_id)] = bufferlist;
+    }
+    return decoded;
   }
 
   int objects_get_attrs(

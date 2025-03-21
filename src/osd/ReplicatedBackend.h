@@ -154,6 +154,12 @@ public:
                Context *on_complete,
                bool fast_read = false) override;
 
+  bool ec_can_decode(const shard_id_set &available_shards) const override;
+  shard_id_map<bufferlist> ec_encode_acting_set(const bufferlist,
+                                                int chunk_size) const override;
+  shard_id_map<bufferlist> ec_decode_acting_set(
+      const shard_id_map<bufferlist> &chunks, int chunk_size) const override;
+
 private:
   // push
   struct push_info_t {

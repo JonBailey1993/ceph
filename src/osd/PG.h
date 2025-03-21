@@ -1399,6 +1399,30 @@ public:
                                  int8_t shard_id) const final {
    return get_pgbackend()->be_get_ondisk_size(logical_size, shard_id_t(shard_id));
  }
+
+ bool ec_can_decode(const shard_id_set &available_shards) const final {
+   return get_pgbackend()->ec_can_decode(available_shards);
+ };
+
+ shard_id_map<bufferlist> ec_encode_acting_set(const bufferlist &chunks,
+                                               int chunk_size) const final {
+   return get_pgbackend()->ec_encode_acting_set(chunks, chunk_size);
+ };
+
+ shard_id_map<bufferlist> ec_decode_acting_set(
+     const shard_id_map<bufferlist> &chunks, int chunk_size) const final {
+   return get_pgbackend()->ec_decode_acting_set(chunks, chunk_size);
+ };
+
+ unsigned int get_ec_data_chunk_count() const final {
+   return get_pgbackend()->get_ec_data_chunk_count();
+ };
+ unsigned int get_ec_stripe_width() const final {
+   return get_pgbackend()->get_ec_stripe_width();
+ };
+ int get_ec_stripe_chunk_size() const final {
+   return get_pgbackend()->get_ec_stripe_chunk_size();
+ };
 };
 
 /**

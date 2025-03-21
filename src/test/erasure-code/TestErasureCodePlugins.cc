@@ -84,6 +84,21 @@ public:
     }
     bl.append(b);
   }
+  void generate_chunk(bufferlist& bl, char c, unsigned int length) {
+    ceph::bufferptr b = buffer::create_aligned(length, 4096);
+    for (int i = 0; i < length; i++) {
+      b[i] = c;
+    }
+    bl.append(b);
+  }
+  void print_char_array_as_hex(std::string pre_print, char* array, int length) {
+    std::cout << pre_print << ": ";
+    for (int i = 0; i < length; i++) {
+      std::cout << std::setw(2) << std::setfill('0') << std::hex
+                << (unsigned int)array[i];
+    }
+    std::cout << std::endl;
+  }
 };
 TEST_P(PluginTest,Initialize)
 {
@@ -470,109 +485,172 @@ TEST_P(PluginTest,CRCEncodeDecodeSupport)
 {
   initialize();
 
+  int seed = -1;
+
+  bufferlist zero_bl;
+  generate_chunk(zero_bl, 0, chunk_size);
+  bufferhash zero_data_hash(seed);
+  zero_data_hash << zero_bl;
+  unsigned int zero_data_crc = zero_data_hash.digest();
+
   shard_id_set want_to_encode;
-  for (shard_id_t i; i < get_k_plus_m(); ++i) {
+  for (shard_id_t i = shard_id_t(0); i < get_k_plus_m(); ++i) {
     want_to_encode.insert(i);
   }
   // Generate random data to encode
-  bufferlist initial_bl;
+  bufferlist data_bl;
   for (unsigned int i = 0; i < get_k(); ++i) {
-    generate_chunk(initial_bl);
+    generate_chunk(data_bl);
   }
 
   // Calculate CRCs for the random data
-  bufferlist initial_bl_hashes;
-  for (bufferlist::iterator it = initial_bl.begin(); it != initial_bl.end();)
-  {
-    unsigned int crc = it.crc32c(chunk_size, 0);
+  bufferlist hashes_bl;
+  bufferlist unseeded_hashes_bl;
+  for (unsigned int i = 0; i < get_k(); ++i) {
+    // Calculate the CRC for the shard at position i
+    bufferlist data_shard_bl;
+    data_shard_bl.substr_of(data_bl, i * chunk_size, chunk_size);
+    bufferhash hash(seed);
+    hash << data_shard_bl;
+    unsigned int crc = hash.digest();
+
+    // XOR with the CRC of zeros preseeded with the same preseed
+    // This undoes the pre-seeding and gives us the CRC as if no seed was
+    // applied
+    unsigned int unseeded_crc = crc ^ zero_data_crc;
+
+    // Convert integers to bufferlists
     unsigned length = sizeof(crc);
     char crc_bytes[length];
+    char unseeded_crc_bytes[length];
     for (int i = 0; i < length; i++)
     {
-      crc_bytes[i] = crc >> (8*(length-i-1)) & 0xFF;
+      crc_bytes[i] = crc >> (8 * i) & 0xFF;
+      unseeded_crc_bytes[i] = unseeded_crc >> (8 * i) & 0xFF;
     }
-    ceph::bufferptr b = ceph::buffer::create_aligned(chunk_size, 4096);
-    b.copy_in(0, length, crc_bytes);
-    // std::cout << "appending " << HexArrayToStr(crc_bytes, length) << std::endl;
-    initial_bl_hashes.append(b);
+    ceph::bufferptr buffer = ceph::buffer::create_aligned(chunk_size, 4096);
+    ceph::bufferptr unseeded_buffer =
+        ceph::buffer::create_aligned(chunk_size, 4096);
+    buffer.zero(true);
+    unseeded_buffer.zero(true);
+    buffer.copy_in(0, length, crc_bytes);
+    unseeded_buffer.copy_in(0, length, unseeded_crc_bytes);
+    hashes_bl.append(buffer);
+    unseeded_hashes_bl.append(unseeded_buffer);
   }
 
   // Encode data and get back data + parity chunks
-  shard_id_map<bufferlist> encoded(get_k_plus_m());
-  erasure_code->encode(want_to_encode, initial_bl, &encoded);
+  shard_id_map<bufferlist> encoded_data(get_k_plus_m());
+  erasure_code->encode(want_to_encode, data_bl, &encoded_data);
 
   // Encode CRCs to get back the data + parity CRCs
   shard_id_map<bufferlist> encoded_hashes(get_k_plus_m());
-  erasure_code->encode(want_to_encode, initial_bl_hashes, &encoded_hashes);
+  shard_id_map<bufferlist> encoded_unseeded_hashes(get_k_plus_m());
+  erasure_code->encode(want_to_encode, hashes_bl, &encoded_hashes);
+  erasure_code->encode(want_to_encode, unseeded_hashes_bl,
+                       &encoded_unseeded_hashes);
+
+  shard_id_map<bufferlist> encoded_data_crcs(get_k_plus_m());
 
   // Calculate CRCs for the new data and new CRCs and compare first parity shard
   bool different = false;
-  auto it = encoded.begin();
-  auto hash_it = encoded_hashes.begin();
-  int shard_num = 0;
   std::vector<shard_id_t> chunk_mapping = erasure_code->get_chunk_mapping();
-  for (;it != encoded.end();)
-  {
-    shard_id_t shard_id = (chunk_mapping.size() > shard_num) ? chunk_mapping[shard_num] : shard_id_t(shard_num);
-    // Encoding only works for the first coding shard, so thats all we test here
+  for (shard_id_t shard_id : want_to_encode) {
+    // Additional calculations are needed for additional parities, so we only
+    // use the first parity
     if (shard_id < get_k() + 1)
     {
-      unsigned int crc = it->second.crc32c(0);
-      unsigned length = sizeof(crc);
-      int crc2 = 0;
+      // Calculate the CRC for the current shard from the encoded data
+      unsigned length = sizeof(unsigned int);
+      bufferhash calculated_hash(-1);
+      calculated_hash << encoded_data.at(shard_id);
+      unsigned int calculated_crc = calculated_hash.digest();
+      char data_crc_bytes[length];
       for (int i = 0; i < length; i++)
       {
-        crc2 |= ((hash_it->second.c_str()[i] & 0xFF) << (8*(length-i-1)));
+        data_crc_bytes[i] = ((calculated_crc >> (8 * i)) & 0xFF);
+      }
+      ceph::bufferptr buffer = ceph::buffer::create_aligned(chunk_size, 4096);
+      buffer.zero(true);
+      buffer.copy_in(0, length, data_crc_bytes);
+      encoded_data_crcs[shard_id].append(buffer);
+
+      // XOR with the CRC of zeros preseeded with the same preseed
+      // This undoes the pre-seeding and gives us the CRC as if no seed was
+      // applied
+      unsigned int calculated_unseeded_crc = calculated_crc ^ zero_data_crc;
+
+      // Calculate integer form of CRCs in bufferlists
+      unsigned int unseeded_crc = 0;
+      for (int i = 0; i < length; i++) {
+        unseeded_crc |=
+            ((encoded_unseeded_hashes.at(shard_id).c_str()[i] & 0xFF)
+             << (8 * i));
       }
 
-      if (crc != crc2) different = true;
-    }
-
-    it++;
-    hash_it++;
-    shard_num++;
-  }
-
-  // Decode CRCs as if 1 to m-1 data CRCs are missing and assert decoded CRC is equal to missing CRC
-  for (raw_shard_id_t missing_raw_shard_id{0}; missing_raw_shard_id.id < get_k(); ++missing_raw_shard_id)
-  {
-    shard_id_t missing_shard_id = (chunk_mapping.size() > shard_num) ? chunk_mapping[missing_raw_shard_id.id] : shard_id_t{missing_raw_shard_id.id};
-
-    shard_id_set need;
-    need.insert(missing_shard_id);
-    shard_id_map<bufferlist> chunks(get_k_plus_m());
-    // Create a map of all buffers except the one we want to be missing
-    for (raw_shard_id_t raw_shard_id{0}; raw_shard_id.id < get_k_plus_m(); ++raw_shard_id)
-    {
-      shard_id_t shard_id = (chunk_mapping.size() > shard_num) ? chunk_mapping[raw_shard_id.id] : shard_id_t{raw_shard_id.id};
-
-      if (shard_id != missing_shard_id)
-      {
-        chunks.insert(shard_id,encoded_hashes[shard_id]);
+      unsigned int seeded_crc = 0;
+      for (int i = 0; i < length; i++) {
+        seeded_crc |=
+            ((encoded_hashes.at(shard_id).c_str()[i] & 0xFF) << (8 * i));
       }
+      if (calculated_unseeded_crc != unseeded_crc) different = true;
+
+      // It is possible to adjust the output ot get the seeded output, depending
+      //   on how many times it passes the seed through the encode/decode
+      //   functions
+      // if (get_k() % 2 == 0 && shard_id >= get_k())
+      // {
+      //   seeded_crc = seeded_crc ^ zero_data_crc;
+      // }
+      // if (calculated_crc != seeded_crc) different = true;
+      // Currently the above shows this is not guarenteed for all plugins and so
+      // should not be a way of checking
     }
-    shard_id_map<bufferlist> out_bls(get_k_plus_m());
-    int r = erasure_code->decode(need, chunks, &out_bls, chunk_size);
 
-    EXPECT_EQ(r, 0);
+    // Decode CRCs as if 1 to m-1 data CRCs are missing and assert decoded CRC
+    // is equal to missing CRC
+    for (raw_shard_id_t missing_raw_shard_id{0};
+         missing_raw_shard_id.id < get_k(); ++missing_raw_shard_id) {
+      shard_id_t missing_shard_id =
+          (chunk_mapping.size() > missing_raw_shard_id.id)
+              ? chunk_mapping[missing_raw_shard_id.id]
+              : shard_id_t{missing_raw_shard_id.id};
 
-    // Check the missing shard has been decoded correctly
-    int crc = 0;
-    for (int j = 0; j < 4; j++)
-    {
-      crc |= ((out_bls[missing_shard_id].c_str()[j] & 0xFF) << (8*(4-j-1)));
+      shard_id_set need;
+      need.insert(missing_shard_id);
+      shard_id_map<bufferlist> chunks(get_k_plus_m());
+      // Create a map of all buffers except the one we want to be missing
+      for (raw_shard_id_t raw_shard_id{0}; raw_shard_id.id < get_k_plus_m();
+           ++raw_shard_id) {
+        shard_id_t shard_id = (chunk_mapping.size() > raw_shard_id.id)
+                                  ? chunk_mapping[raw_shard_id.id]
+                                  : shard_id_t{raw_shard_id.id};
+
+        if (shard_id != missing_shard_id) {
+          chunks.insert(shard_id, encoded_hashes[shard_id]);
+        }
+      }
+      shard_id_map<bufferlist> out_bls(get_k_plus_m());
+      int r = erasure_code->decode(need, chunks, &out_bls, chunk_size);
+
+      EXPECT_EQ(r, 0);
+
+      // Check the missing shard has been decoded correctly
+      unsigned int crc = 0;
+      for (int j = 0; j < 4; j++) {
+        crc |= ((out_bls[missing_shard_id].c_str()[j] & 0xFF) << (8 * j));
+      }
+
+      unsigned int crc2 = 0;
+      for (int j = 0; j < 4; j++) {
+        crc2 |=
+            ((hashes_bl.c_str()[(missing_raw_shard_id.id * chunk_size) + j] &
+              0xFF)
+             << (8 * j));
+      }
+
+      different = different | (crc != crc2);
     }
-
-    auto it = initial_bl_hashes.buffers().begin();
-    std::advance(it, missing_raw_shard_id.id);
-    int crc2 = 0;
-    for (int j = 0; j < 4; j++)
-    {
-      crc2 |= ((it->c_str()[j] & 0xFF) << (8*(4-j-1)));
-    }
-    std::cout << std::hex << std::setw(8) << crc << " == " << crc2 << std::endl;
-
-    different = different | (crc != crc2);
   }
 
   if (erasure_code->get_supported_optimizations() &

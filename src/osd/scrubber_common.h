@@ -281,6 +281,15 @@ struct PgScrubBeListener {
 
   // used to verify our "cleanliness" before scrubbing
   virtual bool is_waiting_for_unreadable_object() const = 0;
+
+  virtual bool ec_can_decode(const shard_id_set& available_shards) const = 0;
+  virtual shard_id_map<bufferlist> ec_encode_acting_set(
+      const bufferlist& chunks, int chunk_size) const = 0;
+  virtual shard_id_map<bufferlist> ec_decode_acting_set(
+      const shard_id_map<bufferlist>& chunks, int chunk_size) const = 0;
+  virtual unsigned int get_ec_data_chunk_count() const = 0;
+  virtual unsigned int get_ec_stripe_width() const = 0;
+  virtual int get_ec_stripe_chunk_size() const = 0;
 };
 
 }  // namespace Scrub
