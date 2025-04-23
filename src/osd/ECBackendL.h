@@ -381,8 +381,14 @@ END_IGNORE_DEPRECATED
   unsigned get_ec_data_chunk_count() const {
     return ec_impl->get_data_chunk_count();
   }
+  unsigned get_ec_stripe_width() const {
+    return ec_impl->get_data_chunk_count() + ec_impl->get_coding_chunk_count();
+  }
   int get_ec_stripe_chunk_size() const {
     return sinfo.get_chunk_size();
+  }
+  bool get_ec_supports_crc_encode_decode() const {
+    return false;
   }
   uint64_t object_size_to_shard_size(const uint64_t size) const {
     if (size == std::numeric_limits<uint64_t>::max()) {
