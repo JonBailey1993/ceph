@@ -98,6 +98,21 @@ class TestPg : public PgScrubBeListener {
 
   bool is_waiting_for_unreadable_object() const final { return false; }
 
+  bool ec_can_decode(const shard_id_set& available_shards) const final {
+    return false;
+  };
+  shard_id_map<bufferlist> ec_encode_acting_set(const bufferlist& chunks,
+                                                int chunk_size) const final {
+    return {0};
+  };
+  shard_id_map<bufferlist> ec_decode_acting_set(
+      const shard_id_map<bufferlist>& chunks, int chunk_size) const final {
+    return {0};
+  };
+  unsigned int get_ec_data_chunk_count() const final { return 0; };
+  unsigned int get_ec_stripe_width() const final { return 0; };
+  int get_ec_stripe_chunk_size() const final { return 0; };
+
   std::shared_ptr<PGPool> m_pool;
   pg_info_t& m_info;
   pg_shard_t m_pshard;

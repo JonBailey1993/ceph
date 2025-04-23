@@ -1715,6 +1715,65 @@ void ECBackend::objects_read_async(
          on_complete)));
 }
 
+bool ECBackend::ec_can_decode(const shard_id_set &available_shards) const {
+  mini_flat_map<shard_id_t, std::vector<std::pair<int, int>>>
+      minimum_sub_chunks{ec_impl->get_chunk_count()};
+  shard_id_set want_to_read;
+  shard_id_set available(available_shards);
+  shard_id_set minimum_set;
+  for (int i = 0; i < ec_impl->get_chunk_count(); i++) {
+    shard_id_t shard_id{static_cast<int8_t>(i)};
+    if (ec_impl->get_chunk_mapping().size() != 0)
+      shard_id = ec_impl->get_chunk_mapping()[i];
+    want_to_read.insert(shard_id);
+  }
+
+  if (ec_impl->get_profile().find("profile")->second == "clay") {
+    // FIXME: Subchunks can be passed through to the minimum_to_decode function
+    // and support for this needs to be added to this function too
+    ceph_abort_msg("Investigate clay subchunk support in this function");
+  }
+
+  int r = ec_impl->minimum_to_decode(want_to_read, available, minimum_set,
+                                     &minimum_sub_chunks);
+  return (r == 0);
+}
+
+shard_id_map<bufferlist> ECBackend::ec_encode_acting_set(
+    const bufferlist &chunks, int chunk_size) const {
+  shard_id_set want_to_encode;
+  for (int i = 0; i < ec_impl->get_chunk_count(); i++) {
+    shard_id_t shard_id = shard_id_t(i);
+    if (ec_impl->get_chunk_mapping().size() != 0)
+      shard_id = ec_impl->get_chunk_mapping()[i];
+    want_to_encode.insert(shard_id);
+  }
+  shard_id_map<bufferlist> encoded{ec_impl->get_chunk_count()};
+  ec_impl->encode(want_to_encode, chunks, &encoded);
+  return encoded;
+}
+
+shard_id_map<bufferlist> ECBackend::ec_decode_acting_set(
+    const shard_id_map<bufferlist> &chunks, int chunk_size) const {
+  shard_id_set want_to_read;
+  for (int i = 0; i < ec_impl->get_chunk_count(); i++) {
+    shard_id_t shard_id = shard_id_t(i);
+    if (ec_impl->get_chunk_mapping().size() != 0)
+      shard_id = ec_impl->get_chunk_mapping()[i];
+    if (!chunks.contains(shard_id)) want_to_read.insert(shard_id);
+  }
+
+  shard_id_map<bufferlist> decoded_buffers(ec_impl->get_chunk_count());
+  ec_impl->decode(want_to_read, chunks, &decoded_buffers, chunk_size);
+
+  shard_id_map<bufferlist> decoded_buffer_map{ec_impl->get_chunk_count()};
+  for (auto &[shard_id, bl] : decoded_buffers) {
+    decoded_buffer_map[shard_id] = bl;
+  }
+
+  return decoded_buffer_map;
+}
+
 void ECBackend::objects_read_and_reconstruct(
   const map<hobject_t, std::list<ec_align_t>> &reads,
   bool fast_read,
@@ -1818,6 +1877,14 @@ int ECBackend::be_deep_scrub(
 
   ECUtil::HashInfoRef hinfo = unstable_hashinfo_registry.get_hash_info(
     poid, false, o.attrs, o.size);
+  if (sinfo.supports_ec_optimisations()) {
+    // HInfo most likely does not exist when ec optimisations are enabled
+    // Instead, we just pass the calculated digest
+    // This will be used along with the plugin to verify data consistency
+    // When we are comparing on the primary
+    o.digest = pos.data_hash.digest();
+    o.digest_present = true;
+  }
   if (!hinfo) {
     dout(0) << "_scan_list  " << poid << " could not retrieve hash info" << dendl;
     o.read_error = true;
