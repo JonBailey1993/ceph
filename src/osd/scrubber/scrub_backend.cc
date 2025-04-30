@@ -70,6 +70,7 @@ ScrubBackend::ScrubBackend(ScrubBeListener& scrubber,
                [i_am](const pg_shard_t& shard) { return shard != i_am; });
 
   m_is_replicated = m_pool.info.is_replicated();
+  m_is_optimized_ec = m_pool.info.allows_ecoptimizations();
   m_mode_desc =
     (m_repair ? "repair"sv
               : (m_depth == scrub_level_t::deep ? "deep-scrub"sv : "scrub"sv));
@@ -421,9 +422,30 @@ auth_selection_t ScrubBackend::select_auth_object(const hobject_t& ho,
   /// that is auth eligible.
   /// This creates an issue with 'digest_match' that should be handled.
   std::list<pg_shard_t> shards;
+  shard_id_set available_shards;
+  shard_id_map<bufferlist> digest_map{m_pg.get_ec_stripe_width()};
+
   for (const auto& [srd, smap] : this_chunk->received_maps) {
     if (srd != m_pg_whoami) {
       shards.push_back(srd);
+    }
+
+    if (m_is_optimized_ec && smap.objects.contains(ho)) {
+      available_shards.insert(srd.shard);
+
+      unsigned int digest = smap.objects.at(ho).digest;
+      constexpr unsigned length = sizeof(digest);
+      char crc_bytes[length];
+      for (unsigned int i = 0; i < length; i++) {
+        crc_bytes[i] = digest >> (8 * i) & 0xFF;
+      }
+      ceph::bufferptr b =
+          ceph::buffer::create_page_aligned(m_pg.get_ec_stripe_chunk_size());
+      b.copy_in(0, length, crc_bytes);
+      bufferlist crc_list;
+      crc_list.append(b);
+
+      digest_map[srd.shard] = crc_list;
     }
   }
   shards.push_front(m_pg_whoami);
@@ -432,33 +454,15 @@ auth_selection_t ScrubBackend::select_auth_object(const hobject_t& ho,
   ret_auth.auth = this_chunk->received_maps.end();
   eversion_t auth_version;
 
-  shard_id_set available_shards;
-  shard_id_map<bufferlist> digest_map{m_pg.get_ec_stripe_width()};
-
   for (auto& l : shards) {
 
     auto shard_ret = possible_auth_shard(ho, l, ret_auth.shard_map);
 
     // digest_match will only be true if computed digests are the same
-    if (auth_version != eversion_t() &&
-        ret_auth.auth->second.objects[ho].digest_present &&
+    if (ret_auth.auth->second.objects[ho].digest_present &&
         shard_ret.digest.has_value()) {
-      if (m_is_optimized_ec) {
-        available_shards.insert(l.shard);
-
-        constexpr unsigned length = sizeof(*shard_ret.digest);
-        char crc_bytes[length];
-        for (unsigned int i = 0; i < length; i++) {
-          crc_bytes[i] = *shard_ret.digest >> (8 * i) & 0xFF;
-        }
-        ceph::bufferptr b =
-            ceph::buffer::create_page_aligned(m_pg.get_ec_stripe_chunk_size());
-        b.copy_in(0, length, crc_bytes);
-        bufferlist crc_list;
-        crc_list.append(b);
-
-        digest_map[l.shard] = crc_list;
-      } else if (ret_auth.auth->second.objects[ho].digest !=
+        if (auth_version != eversion_t() &&
+                 ret_auth.auth->second.objects[ho].digest !=
                  *shard_ret.digest) {
         ret_auth.digest_match = false;
         dout(10) << fmt::format(
@@ -1299,7 +1303,6 @@ ScrubBackend::auth_and_obj_errs_t ScrubBackend::match_in_shards(
           bufferlist zero_bl;
           zero_bl.append(buffer::create(
               logical_to_ondisk_size(auth_sel.auth_oi.size, srd), 0));
-
           bufferhash zero_data_hash(-1);
           zero_data_hash << zero_bl;
           unsigned int zero_data_crc = zero_data_hash.digest();
@@ -1328,10 +1331,10 @@ ScrubBackend::auth_and_obj_errs_t ScrubBackend::match_in_shards(
           shard_id_map<bufferlist> decoded_map =
           m_pg.ec_decode_acting_set(digests, m_pg.get_ec_stripe_chunk_size());
 
-          if (bl[0] != decoded_map[srd][0] ||
-              bl[1] != decoded_map[srd][1] ||
-              bl[2] != decoded_map[srd][2] ||
-              bl[3] != decoded_map[srd][3])
+          if (removed_shard[0] != decoded_map[srd][0] ||
+              removed_shard[1] != decoded_map[srd][1] ||
+              removed_shard[2] != decoded_map[srd][2] ||
+              removed_shard[3] != decoded_map[srd][3])
           {
             incorrectly_decoded_shards.insert(srd);
           }

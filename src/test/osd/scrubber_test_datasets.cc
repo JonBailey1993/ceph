@@ -18,6 +18,13 @@ static RealObj corrupt_object_size(const RealObj& s, [[maybe_unused]] int osdn)
   return ret;
 }
 
+static RealObj corrupt_object_hash(const RealObj& s, [[maybe_unused]] int osdn)
+{
+	RealObj ret = s;
+	ret.data.hash = s.data.hash + 1;
+	return ret;
+}
+
 static RealObj corrupt_nothing(const RealObj& s, int osdn)
 {
   return s;
@@ -29,6 +36,25 @@ static CorruptFuncList crpt_funcs_set0 = {{0, &corrupt_nothing}};
 CorruptFuncList crpt_funcs_set1 = {{0, &corrupt_object_size},
 				   {1, &corrupt_nothing}};
 
+	// EC will only have one shard per OSD for our test, so we add all into
+	// our test to make sure whichever OSD we pick is injected
+CorruptFuncList crpt_funcs_set2 = {{0, &corrupt_object_hash},
+	{1, &corrupt_object_hash},
+	{2, &corrupt_object_hash},
+	{3, &corrupt_object_hash},
+	{4, &corrupt_object_hash},
+	{5, &corrupt_object_hash},
+	{6, &corrupt_object_hash},
+{7, &corrupt_object_hash},
+{8, &corrupt_object_hash},
+{9, &corrupt_object_hash},
+{10, &corrupt_object_hash},
+{11, &corrupt_object_hash},
+{12, &corrupt_object_hash},
+{13, &corrupt_object_hash},
+{14, &corrupt_object_hash},
+{15, &corrupt_object_hash}};
+
 
 // object with head & two snaps
 
@@ -38,6 +64,13 @@ static hobject_t hobj_ms1{object_t{"hobj_ms1"},
 			  0,		// hash
 			  0,		// pool
 			  ""s};		// nspace
+
+hobject_t ec_hobj_ms1{object_t{"ec_hobj_ms1"},
+				"keykey",	// key
+				CEPH_NOSNAP,	// snap_id
+				0,		// hash
+				0,		// pool
+				""s};		// nspace
 
 SnapsetMockData::CookedCloneSnaps ms1_fn()
 {
@@ -55,9 +88,18 @@ SnapsetMockData::CookedCloneSnaps ms1_fn()
   return {clnsz, clnsn, overlaps};
 }
 
+	SnapsetMockData::CookedCloneSnaps ms2_fn()
+{
+	return {{}, {}, {}};
+}
+
 static SnapsetMockData hobj_ms1_snapset{/* seq */ 0x40,
 					/* clones */ {0x20, 0x30},
 					ms1_fn};
+
+static SnapsetMockData empty_snapset{/* seq */ 0x0,
+				/* clones */ {},
+				ms2_fn};
 
 hobject_t hobj_ms1_snp30{object_t{"hobj_ms1"},
 			 "keykey",  // key
@@ -115,5 +157,17 @@ ScrubGenerator::RealObjsConf minimal_snaps_configuration{
      &hobj_ms1_snapset}}
 
 };
+
+ScrubGenerator::RealObj erasure_code_obj{ghobject_t{ec_hobj_ms1, 1, shard_id_t{0}},
+				 RealData{100,
+						0xf8346009,
+						0,
+						0,
+						{},
+						{}
+				 },
+			&crpt_funcs_set0,
+			&empty_snapset
+		};
 
 }  // namespace ScrubDatasets

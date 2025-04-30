@@ -12,10 +12,18 @@ namespace ScrubDatasets {
  */
 extern ScrubGenerator::RealObjsConf minimal_snaps_configuration;
 
+/*
+ * Dataset to represent an erasure coded configuration.
+ */
+extern ScrubGenerator::RealObj erasure_code_obj;
+
 // and a part of this configuration, one that we will corrupt in a test:
 extern hobject_t hobj_ms1_snp30;
 
 // a manipulation set used in TestTScrubberBe_data_2:
 extern ScrubGenerator::CorruptFuncList crpt_funcs_set1;
+
+// a manipulation set used in TestTScrubberBe_data_3:
+extern ScrubGenerator::CorruptFuncList crpt_funcs_set2;
 
 }  // namespace ScrubDatasets
