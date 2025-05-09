@@ -1440,6 +1440,11 @@ public:
   {
     return get_pgbackend()->get_ec_supports_crc_encode_decode();
   }
+
+  virtual ECUtil::stripe_info_t ec_get_sinfo() const final
+  {
+    return get_pgbackend()->ec_get_sinfo();
+  }
 };
 
 /**

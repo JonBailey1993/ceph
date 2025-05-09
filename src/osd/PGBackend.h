@@ -447,6 +447,8 @@ typedef std::shared_ptr<const OSDMap> OSDMapRef;
    virtual shard_id_map<bufferlist> ec_decode_acting_set(
        const shard_id_map<bufferlist> &shard_map, int chunk_size) const = 0;
 
+   virtual ECUtil::stripe_info_t ec_get_sinfo() const = 0;
+
  private:
    std::set<hobject_t> temp_contents;
  public:

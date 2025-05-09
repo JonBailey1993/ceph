@@ -154,11 +154,6 @@ public:
       Context *on_complete,
       bool fast_read = false);
 
-  bool ec_can_decode(const std::set<int> &available_shards) const;
-  std::map<int, bufferlist> ec_encode_acting_set(const bufferlist &in_bl) const;
-  std::map<int, bufferlist> ec_decode_acting_set(
-      const std::map<int, bufferlist> &shard_map, int chunk_size) const;
-
 private:
   friend struct ECRecoveryHandle;
 

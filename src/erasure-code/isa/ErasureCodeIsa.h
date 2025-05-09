@@ -69,11 +69,11 @@ public:
             FLAG_EC_PLUGIN_ZERO_INPUT_ZERO_OUTPUT_OPTIMIZATION |
             FLAG_EC_PLUGIN_PARITY_DELTA_OPTIMIZATION;
 
-    if (technique == "reed_sol_van"sv ||
-        technique == "default"sv) {
-      flags |= FLAG_EC_PLUGIN_OPTIMIZED_SUPPORTED;
+    if (technique == "reed_sol_van"sv) {
+      flags |= FLAG_EC_PLUGIN_OPTIMIZED_SUPPORTED |
+               FLAG_EC_PLUGIN_CRC_ENCODE_DECODE_SUPPORT;
     }
-    else if (technique != "cauchy"sv && m == 1)
+    else if (technique == "cauchy"sv && m == 1)
     {
       flags |= FLAG_EC_PLUGIN_CRC_ENCODE_DECODE_SUPPORT;
     }
@@ -155,9 +155,10 @@ public:
   unsigned char* encode_tbls; // encoding table
 
   ErasureCodeIsaDefault(ErasureCodeIsaTableCache &_tcache,
-                        int matrix = kVandermonde) :
+                        int matrix = kVandermonde,
+                        const char* technique = "default") :
 
-  ErasureCodeIsa("default", _tcache),
+  ErasureCodeIsa(technique, _tcache),
   encode_coeff(0), encode_tbls(0)
   {
     matrixtype = matrix;

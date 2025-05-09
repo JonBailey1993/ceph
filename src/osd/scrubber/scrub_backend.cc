@@ -111,8 +111,7 @@ uint32_t ScrubBackend::generate_zero_buffer_crc(shard_id_t shard_id, int length)
   // Lengths of zero buffers need to match the length of the shard.
   // So we initialise a new buffer to the correct length per shard.
   bufferlist zero_bl;
-  zero_bl.append(buffer::create(
-      logical_to_ondisk_size(length, shard_id), 0));
+  zero_bl.append_zero(logical_to_ondisk_size(length, shard_id));
 
   bufferhash zero_data_hash(-1);
   zero_data_hash << zero_bl;
@@ -547,7 +546,7 @@ auth_selection_t ScrubBackend::select_auth_object(const hobject_t& ho,
     }
   }
 
-  if (auth_version != eversion_t() && m_is_optimized_ec &&
+  if (auth_version != eversion_t() &&
       m_pg.get_ec_supports_crc_encode_decode() && available_shards.size() != 0) {
     if (m_pg.ec_can_decode(available_shards)) {
       // Decode missing data shards needed to do an encode
@@ -555,9 +554,11 @@ auth_selection_t ScrubBackend::select_auth_object(const hobject_t& ho,
       // number of parity shards
 
       int missing_shards = 0;
-      for (shard_id_t shard_id; shard_id < m_pg.get_ec_data_chunk_count();
-           ++shard_id) {
-        if (!available_shards.contains(shard_id)) missing_shards++;
+      for (shard_id_t shard_id : m_pg.ec_get_sinfo().get_data_shards()) {
+        if (!available_shards.contains(shard_id))
+        {
+          missing_shards++;
+        }
       }
 
       int num_redundancy_shards =
@@ -585,8 +586,7 @@ auth_selection_t ScrubBackend::select_auth_object(const hobject_t& ho,
       }
 
       bufferlist crc_bl;
-      for (shard_id_t shard_id; shard_id < m_pg.get_ec_data_chunk_count();
-           ++shard_id) {
+      for (shard_id_t shard_id : m_pg.ec_get_sinfo().get_data_shards()) {
         uint32_t zero_data_crc
             = generate_zero_buffer_crc(shard_id,
                                        logical_to_ondisk_size(ret_auth.auth_oi.size,
@@ -1177,8 +1177,7 @@ ScrubBackend::auth_and_obj_errs_t ScrubBackend::match_in_shards(
                                                      ho.has_snapset(),
                                                      srd);
 
-      if (!m_is_replicated && m_is_optimized_ec &&
-          m_pg.get_ec_supports_crc_encode_decode()) {
+      if (m_pg.get_ec_supports_crc_encode_decode()) {
         // Create map containing all data shards except current shard and all
         // parity shards Decode the current data shard Add to set<shard_id>
         // incorrectly_decoded_shards if the shard did not decode
@@ -1281,8 +1280,7 @@ ScrubBackend::auth_and_obj_errs_t ScrubBackend::match_in_shards(
              << dendl;
   }
 
-  if (!m_is_replicated && m_is_optimized_ec &&
-      m_pg.get_ec_supports_crc_encode_decode())
+  if (m_pg.get_ec_supports_crc_encode_decode())
   {
     set<shard_id_t> incorrectly_decoded_shards;
 
@@ -1306,7 +1304,7 @@ ScrubBackend::auth_and_obj_errs_t ScrubBackend::match_in_shards(
       // a data consistency issue that should be reported.
       for (auto& [srd, bl] : digests)
       {
-        if (srd < m_pg.get_ec_data_chunk_count())
+        if (m_pg.ec_get_sinfo().get_data_shards().contains(srd))
         {
           bufferlist removed_shard = std::move(bl);
           digests.erase(srd);
@@ -1334,7 +1332,7 @@ ScrubBackend::auth_and_obj_errs_t ScrubBackend::match_in_shards(
                 << " " << ho << " : inconsistent with parity data\n";
     }
     else if (incorrectly_decoded_shards.size() <
-    m_pg.get_ec_data_chunk_count())
+             m_pg.get_ec_data_chunk_count())
     {
       for (shard_id_t incorrectly_decoded_shard : incorrectly_decoded_shards)
       {

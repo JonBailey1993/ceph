@@ -132,14 +132,16 @@ ScrubGenerator::RealObjsConf minimal_snaps_configuration{
 
 };
 
-ScrubGenerator::RealObj erasure_code_obj{ghobject_t{ec_hobj_ms1, 1, shard_id_t{0}},
-				 RealData{100,
-                                          0xf8346009,
-                                          0,
-                                          0,
-                                          {},
-                                          {}},
-			&crpt_funcs_set0,
-			&empty_snapset};
+ScrubGenerator::RealObj erasure_code_obj{ghobject_t{ec_hobj_ms1,
+                                                    1,
+	                                                  shard_id_t{0}},
+                                                    RealData{100,
+                                                             0xf8346009,
+                                                             0,
+                                                             0,
+                                                             {},
+                                                             {}},
+                                                    &crpt_funcs_set0,
+                                                    &empty_snapset};
 
 }  // namespace ScrubDatasets

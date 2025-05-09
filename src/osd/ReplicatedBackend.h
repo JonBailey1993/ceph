@@ -158,6 +158,7 @@ public:
   shard_id_map<bufferlist> ec_encode_acting_set(const bufferlist &in_bl) const override;
   shard_id_map<bufferlist> ec_decode_acting_set(
       const shard_id_map<bufferlist> &shard_map, int chunk_size) const override;
+  ECUtil::stripe_info_t ec_get_sinfo() const override;
 
 private:
   // push

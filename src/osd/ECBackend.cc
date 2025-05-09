@@ -1725,19 +1725,13 @@ void ECBackend::objects_read_async(
 bool ECBackend::ec_can_decode(const shard_id_set &available_shards) const {
   mini_flat_map<shard_id_t, std::vector<std::pair<int, int>>>
       minimum_sub_chunks{ec_impl->get_chunk_count()};
-  shard_id_set want_to_read;
+  shard_id_set want_to_read = sinfo.get_all_shards();
   shard_id_set available(available_shards);
   shard_id_set minimum_set;
 
-  for (raw_shard_id_t raw_shard_id = raw_shard_id_t{0};
-       raw_shard_id < ec_impl->get_chunk_count(); ++raw_shard_id) {
-    want_to_read.insert(sinfo.get_shard(raw_shard_id));
-  }
-
-  if (ec_impl->get_profile().find("profile")->second == "clay") {
-    // FIXME: Subchunks can be passed through to the minimum_to_decode function
-    // and support for this needs to be added to this function too
-    ceph_abort_msg("Investigate clay subchunk support in this function");
+  if (sinfo.supports_sub_chunks()) {
+    ceph_abort_msg("Interface does not currently support subchunks");
+    return false;
   }
 
   int r = ec_impl->minimum_to_decode(want_to_read, available, minimum_set,
@@ -1775,6 +1769,11 @@ shard_id_map<bufferlist> ECBackend::ec_decode_acting_set(
   }
 
   return decoded_buffer_map;
+}
+
+ECUtil::stripe_info_t ECBackend::ec_get_sinfo() const
+{
+  return sinfo;
 }
 
 void ECBackend::objects_read_and_reconstruct(
@@ -1879,7 +1878,7 @@ int ECBackend::be_deep_scrub(
   }
   ECUtil::HashInfoRef hinfo = unstable_hashinfo_registry.get_hash_info(
     poid, false, o.attrs, o.size);
-  if (sinfo.supports_ec_optimisations() && sinfo.supports_encode_decode_crcs()) {
+  if (sinfo.supports_encode_decode_crcs()) {
     // HInfo most likely does not exist when ec optimisations are enabled
     // Instead, we just pass the calculated digest
     // This will be used along with the plugin to verify data consistency

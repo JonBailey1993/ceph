@@ -211,7 +211,7 @@ static inline RealObj crpt_do_nothing(const RealObj& s, int osdn)
   return s;
 }
 
-  static inline RealObj crpt_object_hash(const RealObj& s, [[maybe_unused]] int osdn)
+static inline RealObj crpt_object_hash(const RealObj& s, [[maybe_unused]] int osdn)
 {
   RealObj ret = s;
   ret.data.hash = s.data.hash + 1;

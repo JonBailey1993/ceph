@@ -322,7 +322,7 @@ public:
 
   unsigned get_ec_stripe_width() const override {
     if (is_optimized()) {
-      return optimized.get_ec_stripe_width();
+      return optimized.get_ec_k_plus_m();
     }
     return legacy.get_ec_stripe_width();
   }
@@ -344,33 +344,21 @@ public:
   }
 
   bool ec_can_decode(const shard_id_set &available_shards) const override {
-    if (is_optimized()) {
+    if (is_optimized())
+    {
       return optimized.ec_can_decode(available_shards);
     }
 
-    // Convert into a set type supported by Legacy EC
-    std::set<int> available_shard_set{};
-    for (auto &shard_id : available_shards) {
-      available_shard_set.insert(shard_id.id);
-    }
-
-    return legacy.ec_can_decode(available_shard_set);
+    return false;
   }
 
   shard_id_map<bufferlist> ec_encode_acting_set(const bufferlist &in_bl) const override {
     if (is_optimized()) {
       return optimized.ec_encode_acting_set(in_bl);
     }
-    // Convert into a map type supported by Legacy EC
-    std::map<int, bufferlist> legacy_encoded_map =
-        legacy.ec_encode_acting_set(in_bl);
 
-    // Convert return type back from legacy EC type
-    shard_id_map<bufferlist> encoded_map(legacy_encoded_map.size());
-    for (const auto &[shard_id, bl] : legacy_encoded_map) {
-      encoded_map[shard_id_t(shard_id)] = bl;
-    }
-    return encoded_map;
+    ceph_abort_msg("This interface is not supported by legacy EC");
+    return {0};
   }
 
   shard_id_map<bufferlist> ec_decode_acting_set(
@@ -378,20 +366,20 @@ public:
     if (is_optimized()) {
       return optimized.ec_decode_acting_set(shard_map, chunk_size);
     }
-    // Convert into a set type supported by Legacy EC
-    std::map<int, bufferlist> legacy_shard_map;
-    for (const auto &[shard_id, bl] : shard_map) {
-      legacy_shard_map[shard_id.id] = bl;
-    }
-    std::map<int, bufferlist> legacy_decoded_map =
-        legacy.ec_decode_acting_set(legacy_shard_map, chunk_size);
 
-    // Convert return type back from legacy EC type
-    shard_id_map<bufferlist> decoded_map(legacy_decoded_map.size());
-    for (const auto &[shard_id, bl] : legacy_decoded_map) {
-      decoded_map[shard_id_t(shard_id)] = bl;
+    ceph_abort_msg("This interface is not supported by legacy EC");
+    return {0};
+  }
+
+  ECUtil::stripe_info_t ec_get_sinfo() const
+  {
+    if (is_optimized())
+    {
+      return optimized.ec_get_sinfo();
     }
-    return decoded_map;
+
+    ceph_abort_msg("This interface is not supported by legacy EC");
+    return {0, 0, 0};
   }
 
   int objects_get_attrs(

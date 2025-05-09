@@ -179,6 +179,7 @@ class ECBackend : public ECCommon {
   shard_id_map<bufferlist> ec_encode_acting_set(const bufferlist &in_bl) const;
   shard_id_map<bufferlist> ec_decode_acting_set(
       const shard_id_map<bufferlist> &shard_map, int chunk_size) const;
+  ECUtil::stripe_info_t ec_get_sinfo() const;
 
  private:
   friend struct ECRecoveryHandle;
@@ -442,8 +443,8 @@ class ECBackend : public ECCommon {
     return sinfo.get_k();
   }
 
-  unsigned get_ec_stripe_width() const {
-    return sinfo.get_k() + sinfo.get_m();
+  unsigned get_ec_k_plus_m() const {
+    return sinfo.get_k_plus_m();
   }
 
   int get_ec_stripe_chunk_size() const {

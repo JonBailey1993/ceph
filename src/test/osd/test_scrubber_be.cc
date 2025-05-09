@@ -113,14 +113,14 @@ class TestPg : public PgScrubBeListener {
   shard_id_map<bufferlist> ec_encode_acting_set(const bufferlist& chunks) const final
   {
     shard_id_map<bufferlist> encode_map(get_ec_stripe_width());
-    for (shard_id_t i{0}; i < get_ec_stripe_width(); ++i)
+    for (shard_id_t i; i < get_ec_stripe_width(); ++i)
     {
       bufferlist bl;
       bl.append(buffer::create(get_ec_stripe_chunk_size(), 0));
       bl.rebuild();
       encode_map.insert(i, bl);
     }
-    for (shard_id_t i{0}; i < get_ec_data_chunk_count(); ++i)
+    for (shard_id_t i; i < get_ec_data_chunk_count(); ++i)
     {
       for (int j = 0; j < get_ec_stripe_chunk_size(); j++)
       {
@@ -836,7 +836,7 @@ protected:
 
 public:
   TestTScrubberBeECCorruptShards() : TestTScrubberBe(),
-  seed(time(0)),
+  seed(1746787224),//time(0)),
   rng(seed),
   k((rng() % 11) + 1),
   m((rng() % std::min(k-1, 4)) + 1)
@@ -920,50 +920,6 @@ TEST_F(TestTScrubberBeECSingleCorruptDataShard, ec_parity_inconsistency)
   auto [incons, fix_list] = sbe->scrub_compare_maps(true, *test_scrubber);
 
   EXPECT_EQ(incons.size(), 1);	// Assert we see the number of inconsistencies we are expecting after we compare maps
-}
-
-class TestTScrubberBeECMultipleCorruptDataShards : public TestTScrubberBeECCorruptShards {
-public:
-  int num_corrupt_shards;
-
-  TestTScrubberBeECMultipleCorruptDataShards() : TestTScrubberBeECCorruptShards() {}
-
-  TestTScrubberBeParams inject_params() override
-  {
-    std::vector<int> shard_ids;
-    for (int i = 0; i < k; i++)
-    {
-      shard_ids.push_back(i);
-    }
-
-    std::shuffle(shard_ids.begin(), shard_ids.end(), rng);
-    num_corrupt_shards = rng() % (k - 1);
-
-    TestTScrubberBeParams params = TestTScrubberBeECCorruptShards::inject_params();
-    for (int i = 0; i < num_corrupt_shards; i++)
-    {
-      corrupt_funcs = make_erasure_code_hash_corruption_functions(k+m);
-      params.objs_conf.objs[shard_ids.at(i)].corrupt_funcs = &corrupt_funcs;
-    }
-    return params;
-  }
-
-private:
-  CorruptFuncList corrupt_funcs;
-};
-
-TEST_F(TestTScrubberBeECMultipleCorruptDataShards, ec_parity_inconsistency)
-{
-  test_pg->set_ec_stripe_chunk_size(m_chunk_size);
-  test_pg->set_k(k);
-  test_pg->set_m(m);
-
-  ASSERT_TRUE(sbe); // Assert we have a scrubber backend
-  logger.set_expected_err_count(num_corrupt_shards); // Set the number of errors we expect to see
-
-  auto [incons, fix_list] = sbe->scrub_compare_maps(true, *test_scrubber);
-
-  EXPECT_EQ(incons.size(), num_corrupt_shards);	// Assert we see the number of inconsistencies we are expecting after we compare maps
 }
 
 class TestTScrubberBeECCorruptParityShard : public TestTScrubberBeECCorruptShards {

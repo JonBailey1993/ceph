@@ -296,6 +296,7 @@ struct PgScrubBeListener {
   virtual unsigned int get_ec_stripe_width() const = 0;
   virtual int get_ec_stripe_chunk_size() const = 0;
   virtual bool get_ec_supports_crc_encode_decode() const = 0;
+  virtual ECUtil::stripe_info_t ec_get_sinfo() const = 0;
 };
 
 // defining a specific subset of performance counters. Each of the members

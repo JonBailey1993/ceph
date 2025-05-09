@@ -73,10 +73,11 @@ RealObjsConfList ScrubGenerator::make_real_objs_conf(
   RealObjsConfList all_osds;
 
   for (auto osd : active_osds) {
-    shard_id_t shard = std::find_if(acting_shards.begin(),acting_shards.end(), [&osd](pg_shard_t pg_shard)
-    {
-      return osd == pg_shard.osd;
-    })->shard;
+    shard_id_t shard = std::find_if(acting_shards.begin(),
+                                    acting_shards.end(),
+                                    [&osd](pg_shard_t pg_shard) {
+                                      return osd == pg_shard.osd;
+                                    })->shard;
 
     RealObjsConfRef this_osd_fakes = std::make_unique<RealObjsConf>(blueprint);
     // now - fix & corrupt every "object" in the blueprint
