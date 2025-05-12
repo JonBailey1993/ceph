@@ -320,13 +320,6 @@ public:
     return legacy.get_ec_data_chunk_count();
   }
 
-  unsigned get_ec_stripe_width() const override {
-    if (is_optimized()) {
-      return optimized.get_ec_k_plus_m();
-    }
-    return legacy.get_ec_stripe_width();
-  }
-
   int get_ec_stripe_chunk_size() const override
   {
     if (is_optimized()) {

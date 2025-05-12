@@ -381,9 +381,6 @@ END_IGNORE_DEPRECATED
   unsigned get_ec_data_chunk_count() const {
     return ec_impl->get_data_chunk_count();
   }
-  unsigned get_ec_stripe_width() const {
-    return ec_impl->get_data_chunk_count() + ec_impl->get_coding_chunk_count();
-  }
   int get_ec_stripe_chunk_size() const {
     return sinfo.get_chunk_size();
   }

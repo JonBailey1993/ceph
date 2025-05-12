@@ -74,9 +74,6 @@ class TestScrubBackend : public ScrubBackend {
 // mocking the PG
 class TestPg : public PgScrubBeListener {
   ErasureCodeInterfaceRef m_erasure_code_interface;
-  unsigned int m_ec_stripe_width = 0;
-  unsigned int m_erasure_code_k = 0;
-  unsigned int m_erasure_code_m = 0;
 
  public:
   ~TestPg() = default;
@@ -105,29 +102,29 @@ class TestPg : public PgScrubBeListener {
 
   bool ec_can_decode(const shard_id_set& available_shards) const final {
     return get_is_ec_optimized()
-      && available_shards.size() > get_ec_stripe_width() - 2;
+      && available_shards.size() > ec_get_sinfo().get_k_plus_m() - 2;
   };
 
   // Fake encode function for erasure code tests in this class.
   // Just sets parities to sum of data shards.
   shard_id_map<bufferlist> ec_encode_acting_set(const bufferlist& chunks) const final
   {
-    shard_id_map<bufferlist> encode_map(get_ec_stripe_width());
-    for (shard_id_t i; i < get_ec_stripe_width(); ++i)
+    shard_id_map<bufferlist> encode_map(ec_get_sinfo().get_k_plus_m());
+    for (shard_id_t i; i < ec_get_sinfo().get_k_plus_m(); ++i)
     {
       bufferlist bl;
-      bl.append(buffer::create(get_ec_stripe_chunk_size(), 0));
+      bl.append(buffer::create(ec_get_sinfo().get_chunk_size(), 0));
       bl.rebuild();
       encode_map.insert(i, bl);
     }
-    for (shard_id_t i; i < get_ec_data_chunk_count(); ++i)
+    for (shard_id_t i; i < ec_get_sinfo().get_k(); ++i)
     {
-      for (int j = 0; j < get_ec_stripe_chunk_size(); j++)
+      for (int j = 0; j < ec_get_sinfo().get_chunk_size(); j++)
       {
-        encode_map.at(i).c_str()[j] = chunks[j + (get_ec_stripe_chunk_size() * i.id)];
-        for (shard_id_t k{static_cast<int8_t>(get_ec_stripe_width())}; k < get_ec_stripe_width(); ++k)
+        encode_map.at(i).c_str()[j] = chunks[j + (ec_get_sinfo().get_chunk_size() * i.id)];
+        for (shard_id_t k{static_cast<int8_t>(ec_get_sinfo().get_k_plus_m())}; k < ec_get_sinfo().get_k_plus_m(); ++k)
         {
-          encode_map.at(k).c_str()[j] += chunks[j + (get_ec_stripe_chunk_size() * i.id)];
+          encode_map.at(k).c_str()[j] += chunks[j + (ec_get_sinfo().get_chunk_size() * i.id)];
         }
       }
     }
@@ -141,11 +138,11 @@ class TestPg : public PgScrubBeListener {
   // Tests using this will only have 1 missing shard.
   shard_id_map<bufferlist> ec_decode_acting_set(
       const shard_id_map<bufferlist>& chunks, int chunk_size) const final {
-    shard_id_map<bufferlist> decode_map(get_ec_stripe_width());
+    shard_id_map<bufferlist> decode_map(ec_get_sinfo().get_k_plus_m());
 
-    ceph_assert(chunks.size() > get_ec_stripe_width() - 2);
+    ceph_assert(chunks.size() > ec_get_sinfo().get_k_plus_m() - 2);
 
-    for (shard_id_t i; i < get_ec_stripe_width(); ++i)
+    for (shard_id_t i; i < ec_get_sinfo().get_k_plus_m(); ++i)
     {
       bufferlist bl;
       bufferptr ptr = buffer::create(chunk_size, 0);
@@ -158,19 +155,19 @@ class TestPg : public PgScrubBeListener {
       decode_map.insert(i, bl);
     }
 
-    for (shard_id_t shard; shard < get_ec_stripe_width(); ++shard)
+    for (shard_id_t shard; shard < ec_get_sinfo().get_k_plus_m(); ++shard)
     {
       if (!chunks.contains(shard))
       {
         for (int j = 0; j < chunk_size; j++)
         {
-          if (shard < get_ec_data_chunk_count())
+          if (shard < ec_get_sinfo().get_k())
           {
-            decode_map.at(shard).c_str()[j] = decode_map.at(shard_id_t{static_cast<int8_t>(get_ec_data_chunk_count())}).c_str()[j];
+            decode_map.at(shard).c_str()[j] = decode_map.at(shard_id_t{static_cast<int8_t>(ec_get_sinfo().get_k())}).c_str()[j];
           }
-          for (shard_id_t i; i < get_ec_data_chunk_count(); ++i)
+          for (shard_id_t i; i < ec_get_sinfo().get_k(); ++i)
           {
-            if (shard < get_ec_data_chunk_count() && chunks.contains(i))
+            if (shard < ec_get_sinfo().get_k() && chunks.contains(i))
             {
               decode_map.at(shard).c_str()[j] -= decode_map.at(i).c_str()[j];
             }
@@ -198,26 +195,6 @@ class TestPg : public PgScrubBeListener {
   ECUtil::stripe_info_t ec_get_sinfo() const final
   {
     return *m_sinfo;
-  }
-
-
-  unsigned int get_ec_data_chunk_count() const final { return m_sinfo->get_k(); };
-  unsigned int get_ec_stripe_width() const final { return m_sinfo->get_k_plus_m(); };
-  int get_ec_stripe_chunk_size() const final { return m_sinfo->get_chunk_size(); };
-
-  void set_ec_stripe_chunk_size(unsigned int chunk_size)
-  {
-    m_ec_stripe_width = chunk_size;
-  }
-
-  void set_k(unsigned int k)
-  {
-    m_erasure_code_k = k;
-  }
-
-  void set_m(unsigned int m)
-  {
-    m_erasure_code_m = m;
   }
 
   void set_stripe_info(unsigned int k, unsigned int m, uint64_t stripe_width,
@@ -893,9 +870,6 @@ public:
 
 TEST_F(TestTScrubberBeECNoCorruptShards, ec_parity_inconsistency)
 {
-  // test_pg->set_ec_stripe_chunk_size(m_chunk_size);
-  // test_pg->set_k(k);
-  // test_pg->set_m(m);
   test_pg->set_stripe_info(k, m, k*m_chunk_size, &test_pg->m_pool->info);
 
   ASSERT_TRUE(sbe); // Assert we have a scrubber backend
@@ -924,9 +898,6 @@ private:
 
 TEST_F(TestTScrubberBeECSingleCorruptDataShard, ec_parity_inconsistency)
 {
-  // test_pg->set_ec_stripe_chunk_size(m_chunk_size);
-  // test_pg->set_k(k);
-  // test_pg->set_m(m);
   test_pg->set_stripe_info(k, m, k*m_chunk_size, &test_pg->m_pool->info);
 
   ASSERT_TRUE(sbe); // Assert we have a scrubber backend
@@ -955,9 +926,6 @@ private:
 
 TEST_F(TestTScrubberBeECCorruptParityShard, ec_parity_inconsistency)
 {
-  // test_pg->set_ec_stripe_chunk_size(m_chunk_size);
-  // test_pg->set_k(k);
-  // test_pg->set_m(m);
   test_pg->set_stripe_info(k, m, k*m_chunk_size, &test_pg->m_pool->info);
 
   ASSERT_TRUE(sbe); // Assert we have a scrubber backend

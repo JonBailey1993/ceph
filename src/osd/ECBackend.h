@@ -443,10 +443,6 @@ class ECBackend : public ECCommon {
     return sinfo.get_k();
   }
 
-  unsigned get_ec_k_plus_m() const {
-    return sinfo.get_k_plus_m();
-  }
-
   int get_ec_stripe_chunk_size() const {
     return sinfo.get_chunk_size();
   }

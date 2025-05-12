@@ -439,7 +439,7 @@ auth_selection_t ScrubBackend::select_auth_object(const hobject_t& ho,
 
   if (m_pg.get_ec_supports_crc_encode_decode())
   {
-    digest_map = {m_pg.get_ec_stripe_width()};
+    digest_map = {m_pg.ec_get_sinfo().get_k_plus_m()};
   }
 
   for (const auto& [srd, smap] : this_chunk->received_maps) {
@@ -458,7 +458,7 @@ auth_selection_t ScrubBackend::select_auth_object(const hobject_t& ho,
         crc_bytes[i] = digest >> (8 * i) & 0xFF;
       }
       ceph::bufferptr b =
-          ceph::buffer::create_page_aligned(m_pg.get_ec_stripe_chunk_size());
+          ceph::buffer::create_page_aligned(m_pg.ec_get_sinfo().get_chunk_size());
       b.copy_in(0, length, crc_bytes);
       bufferlist crc_list;
       crc_list.append(b);
@@ -567,7 +567,7 @@ auth_selection_t ScrubBackend::select_auth_object(const hobject_t& ho,
       }
 
       int num_redundancy_shards =
-          (m_pg.get_ec_stripe_width() - m_pg.get_ec_data_chunk_count());
+          (m_pg.ec_get_sinfo().get_k_plus_m() - m_pg.ec_get_sinfo().get_k());
       if (missing_shards > 0 && missing_shards < num_redundancy_shards) {
         dout(10) << fmt::format(
                         "{}: Decoding {} missing shards for pg {} "
@@ -575,7 +575,7 @@ auth_selection_t ScrubBackend::select_auth_object(const hobject_t& ho,
                         __func__, missing_shards, m_pg_whoami, available_shards)
                  << dendl;
         digest_map = m_pg.ec_decode_acting_set(digest_map,
-                                               m_pg.get_ec_stripe_chunk_size());
+                                               m_pg.ec_get_sinfo().get_chunk_size());
       } else if (missing_shards != 0) {
         dout(5) << fmt::format(
                        "{}: Cannot decode {} shards from pg {} "
@@ -607,8 +607,8 @@ auth_selection_t ScrubBackend::select_auth_object(const hobject_t& ho,
       shard_id_map<bufferlist> encoded_crcs =
           m_pg.ec_encode_acting_set(crc_bl);
 
-      if (encoded_crcs[shard_id_t(m_pg.get_ec_data_chunk_count())] !=
-          digest_map[shard_id_t(m_pg.get_ec_data_chunk_count())]) {
+      if (encoded_crcs[shard_id_t(m_pg.ec_get_sinfo().get_k())] !=
+          digest_map[shard_id_t(m_pg.ec_get_sinfo().get_k())]) {
         ret_auth.digest_match = false;
       }
     } else {
@@ -1160,7 +1160,7 @@ ScrubBackend::auth_and_obj_errs_t ScrubBackend::match_in_shards(
 
   if (m_pg.get_ec_supports_crc_encode_decode())
   {
-    digests = {m_pg.get_ec_stripe_width()};
+    digests = {m_pg.ec_get_sinfo().get_k_plus_m()};
   }
 
   for (auto& [srd, smap] : this_chunk->received_maps) {
@@ -1198,7 +1198,7 @@ ScrubBackend::auth_and_obj_errs_t ScrubBackend::match_in_shards(
           crc_bytes[i] = smap.objects[ho].digest >> (8 * i) & 0xFF;
         }
         ceph::bufferptr b =
-            ceph::buffer::create_page_aligned(m_pg.get_ec_stripe_chunk_size());
+            ceph::buffer::create_page_aligned(m_pg.ec_get_sinfo().get_chunk_size());
         b.copy_in(0, length, crc_bytes);
         bufferlist crc_list;
         crc_list.append(b);
@@ -1320,7 +1320,7 @@ ScrubBackend::auth_and_obj_errs_t ScrubBackend::match_in_shards(
           digests.erase(srd);
 
           shard_id_map<bufferlist> decoded_map =
-          m_pg.ec_decode_acting_set(digests, m_pg.get_ec_stripe_chunk_size());
+          m_pg.ec_decode_acting_set(digests, m_pg.ec_get_sinfo().get_chunk_size());
 
           if (!std::equal(removed_shard.begin(),
                           removed_shard.end(),
@@ -1342,7 +1342,7 @@ ScrubBackend::auth_and_obj_errs_t ScrubBackend::match_in_shards(
                 << " " << ho << " : inconsistent with parity data\n";
     }
     else if (incorrectly_decoded_shards.size() <
-             m_pg.get_ec_data_chunk_count())
+             m_pg.ec_get_sinfo().get_k())
     {
       for (shard_id_t incorrectly_decoded_shard : incorrectly_decoded_shards)
       {
@@ -1352,7 +1352,7 @@ ScrubBackend::auth_and_obj_errs_t ScrubBackend::match_in_shards(
                   << " " << ho << " : inconsistent with parity data\n";
       }
     }
-    else if (incorrectly_decoded_shards.size() == m_pg.get_ec_data_chunk_count())
+    else if (incorrectly_decoded_shards.size() == m_pg.ec_get_sinfo().get_k())
     {
       obj_result.set_data_digest_mismatch();
       this_chunk->m_error_counts.deep_errors++;

@@ -1427,15 +1427,6 @@ public:
     return get_pgbackend()->ec_decode_acting_set(shard_map, chunk_size);
   };
 
-  unsigned int get_ec_data_chunk_count() const final {
-    return get_pgbackend()->get_ec_data_chunk_count();
-  };
-  unsigned int get_ec_stripe_width() const final {
-    return get_pgbackend()->get_ec_stripe_width();
-  };
-  int get_ec_stripe_chunk_size() const final {
-    return get_pgbackend()->get_ec_stripe_chunk_size();
-  };
   bool get_ec_supports_crc_encode_decode() const final
   {
     return get_pgbackend()->get_ec_supports_crc_encode_decode();
