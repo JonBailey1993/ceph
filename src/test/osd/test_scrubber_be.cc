@@ -192,12 +192,18 @@ class TestPg : public PgScrubBeListener {
 
   bool get_ec_supports_crc_encode_decode() const final
   {
-    return true;
+    return get_is_ec_optimized();
   }
 
-  unsigned int get_ec_data_chunk_count() const final { return m_erasure_code_k; };
-  unsigned int get_ec_stripe_width() const final { return m_erasure_code_k + m_erasure_code_m; };
-  int get_ec_stripe_chunk_size() const final { return m_ec_stripe_width; };
+  ECUtil::stripe_info_t ec_get_sinfo() const final
+  {
+    return *m_sinfo;
+  }
+
+
+  unsigned int get_ec_data_chunk_count() const final { return m_sinfo->get_k(); };
+  unsigned int get_ec_stripe_width() const final { return m_sinfo->get_k_plus_m(); };
+  int get_ec_stripe_chunk_size() const final { return m_sinfo->get_chunk_size(); };
 
   void set_ec_stripe_chunk_size(unsigned int chunk_size)
   {
@@ -214,11 +220,18 @@ class TestPg : public PgScrubBeListener {
     m_erasure_code_m = m;
   }
 
+  void set_stripe_info(unsigned int k, unsigned int m, uint64_t stripe_width,
+                       const pg_pool_t *pool)
+  {
+    m_sinfo.reset(new ECUtil::stripe_info_t{k, m, stripe_width, pool});
+  }
+
   bool is_waiting_for_unreadable_object() const final { return false; }
 
   std::shared_ptr<PGPool> m_pool;
   pg_info_t& m_info;
   pg_shard_t m_pshard;
+  std::unique_ptr<ECUtil::stripe_info_t> m_sinfo;
 
   bool get_is_nonprimary_shard(const pg_shard_t &pg_shard) const final
   {
@@ -880,9 +893,10 @@ public:
 
 TEST_F(TestTScrubberBeECNoCorruptShards, ec_parity_inconsistency)
 {
-  test_pg->set_ec_stripe_chunk_size(m_chunk_size);
-  test_pg->set_k(k);
-  test_pg->set_m(m);
+  // test_pg->set_ec_stripe_chunk_size(m_chunk_size);
+  // test_pg->set_k(k);
+  // test_pg->set_m(m);
+  test_pg->set_stripe_info(k, m, k*m_chunk_size, &test_pg->m_pool->info);
 
   ASSERT_TRUE(sbe); // Assert we have a scrubber backend
   logger.set_expected_err_count(0); // Set the number of errors we expect to see
@@ -910,9 +924,10 @@ private:
 
 TEST_F(TestTScrubberBeECSingleCorruptDataShard, ec_parity_inconsistency)
 {
-  test_pg->set_ec_stripe_chunk_size(m_chunk_size);
-  test_pg->set_k(k);
-  test_pg->set_m(m);
+  // test_pg->set_ec_stripe_chunk_size(m_chunk_size);
+  // test_pg->set_k(k);
+  // test_pg->set_m(m);
+  test_pg->set_stripe_info(k, m, k*m_chunk_size, &test_pg->m_pool->info);
 
   ASSERT_TRUE(sbe); // Assert we have a scrubber backend
   logger.set_expected_err_count(1); // Set the number of errors we expect to see
@@ -940,9 +955,10 @@ private:
 
 TEST_F(TestTScrubberBeECCorruptParityShard, ec_parity_inconsistency)
 {
-  test_pg->set_ec_stripe_chunk_size(m_chunk_size);
-  test_pg->set_k(k);
-  test_pg->set_m(m);
+  // test_pg->set_ec_stripe_chunk_size(m_chunk_size);
+  // test_pg->set_k(k);
+  // test_pg->set_m(m);
+  test_pg->set_stripe_info(k, m, k*m_chunk_size, &test_pg->m_pool->info);
 
   ASSERT_TRUE(sbe); // Assert we have a scrubber backend
   logger.set_expected_err_count(1); // Set the number of errors we expect to see

@@ -334,7 +334,7 @@ shard_id_map<bufferlist> ReplicatedBackend::ec_decode_acting_set(
   return {0};
 }
 
-ECUtil::stripe_info_t ec_get_sinfo() const override
+ECUtil::stripe_info_t ReplicatedBackend::ec_get_sinfo() const
 {
   ceph_abort_msg("ec_get_sinfo is not used by replica pool");
   return {0,0,0};

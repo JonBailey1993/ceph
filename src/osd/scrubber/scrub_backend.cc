@@ -435,7 +435,12 @@ auth_selection_t ScrubBackend::select_auth_object(const hobject_t& ho,
   /// This creates an issue with 'digest_match' that should be handled.
   std::list<pg_shard_t> shards;
   shard_id_set available_shards;
-  shard_id_map<bufferlist> digest_map{m_pg.get_ec_stripe_width()};
+  shard_id_map<bufferlist> digest_map{0};
+
+  if (m_pg.get_ec_supports_crc_encode_decode())
+  {
+    digest_map = {m_pg.get_ec_stripe_width()};
+  }
 
   for (const auto& [srd, smap] : this_chunk->received_maps) {
     if (srd != m_pg_whoami) {
@@ -1151,7 +1156,12 @@ ScrubBackend::auth_and_obj_errs_t ScrubBackend::match_in_shards(
 {
   std::list<pg_shard_t> auth_list;     // out "param" to
   std::set<pg_shard_t> object_errors;  // be returned
-  shard_id_map<bufferlist> digests{m_pg.get_ec_stripe_width()};
+  shard_id_map<bufferlist> digests{0};
+
+  if (m_pg.get_ec_supports_crc_encode_decode())
+  {
+    digests = {m_pg.get_ec_stripe_width()};
+  }
 
   for (auto& [srd, smap] : this_chunk->received_maps) {
 

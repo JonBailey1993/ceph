@@ -17,6 +17,7 @@
 #include "os/ObjectStore.h"
 #include "osd/osd_perf_counters.h" // for osd_counter_idx_t
 
+#include "ECUtil.h"
 #include "OpRequest.h"
 
 namespace ceph {
