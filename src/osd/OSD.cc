@@ -6634,6 +6634,7 @@ void TestOpsSocketHook::test_ops(OSDService *service, ObjectStore *store,
       if (service->cct->_conf->bluestore_debug_inject_read_err) {
 	int64_t type = cmd_getval_or<int64_t>(cmdmap, "type", 0);
 	ss << ECInject::clear_read_error(gobj, type);
+        service->osd->send_stashed_messages();
       } else {
 	ss << "bluestore_debug_inject_read_err not enabled";
       }
@@ -7651,8 +7652,7 @@ void OSD::dispatch_session_waiting(const ceph::ref_t<Session>& session, OSDMapRe
   }
 }
 
-void OSD::ms_fast_dispatch(Message *m)
-{
+void OSD::ms_fast_dispatch(Message *m) {
   FUNCTRACE(cct);
   if (service.is_stopping()) {
     m->put();
@@ -7738,6 +7738,43 @@ void OSD::ms_fast_dispatch(Message *m)
       legacy = false;
     }
   }
+
+  bool stashed_message = false;
+  if (m->get_type() == CEPH_MSG_OSD_OP)
+  {
+    MOSDOp* mo = static_cast<MOSDOp*>(op->get_nonconst_req());
+    mo->finish_decode();
+    ghobject_t gho{mo->get_hobj(), ghobject_t::NO_GEN, shard_id_t{0}};
+    if (cct->_conf->bluestore_debug_inject_read_err &&
+        ECInject::test_read_error2(gho)) {
+      stashed_message = true;
+      stashed_messages[m] = op;
+    }
+  }
+
+  if (!stashed_message) {
+    ms_fast_dispatch_send(legacy, spg, m, op);
+  }
+}
+
+void OSD::send_stashed_messages() {
+  for (auto it = stashed_messages.begin(); it != stashed_messages.end();) {
+    MOSDOp* mo = static_cast<MOSDOp*>(it->second->get_nonconst_req());
+    ghobject_t gho{mo->get_hobj(), ghobject_t::NO_GEN, shard_id_t{0}};
+    if (cct->_conf->bluestore_debug_inject_read_err &&
+       !ECInject::test_read_error2(gho)) {
+      bool legacy = !it->first->get_connection()->has_features(CEPH_FEATUREMASK_SERVER_TENTACLE);
+      spg_t spg = static_cast<MOSDFastDispatchOp*>(it->first)->get_spg();
+      ms_fast_dispatch_send(legacy, spg, it->first, it->second);
+      it = stashed_messages.erase(it);
+    }
+    else {
+      ++it;
+    }
+  }
+}
+
+void OSD::ms_fast_dispatch_send(bool legacy, spg_t& spg, Message *m, OpRequestRef op) {
   if (!legacy &&
       (m->get_connection()->has_features(CEPH_FEATUREMASK_RESEND_ON_SPLIT) ||
        m->get_type() != CEPH_MSG_OSD_OP)) {

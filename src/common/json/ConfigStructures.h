@@ -19,6 +19,14 @@ struct ConfigSetRequest {
   void dump(Formatter* f) const;
   void decode_json(JSONObj* obj);
 };
+
+struct ConfigGetRequest {
+  std::string who;
+  std::string key;
+
+  void dump(Formatter* f) const;
+  void decode_json(JSONObj* obj);
+};
 }  // namespace config
 }  // namespace messaging
 }  // namespace ceph

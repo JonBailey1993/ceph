@@ -24,6 +24,7 @@ namespace ECInject {
     ceph::make_recursive_mutex("ECCommon::lock");
   static std::map<ghobject_t,std::pair<int64_t,int64_t>> read_failures0;
   static std::map<ghobject_t,std::pair<int64_t,int64_t>> read_failures1;
+  static std::map<ghobject_t,std::pair<int64_t,int64_t>> read_failures2;
   static std::map<ghobject_t,std::pair<int64_t,int64_t>> write_failures0;
   static std::map<ghobject_t,std::pair<int64_t,int64_t>> write_failures1;
   static std::map<ghobject_t,std::pair<int64_t,int64_t>> write_failures2;
@@ -64,6 +65,10 @@ namespace ECInject {
     case 1:
       read_failures1[os] = std::pair(when, duration);
       return "ok - read pretends shard is missing";
+    case 2:
+      os.set_shard(shard_id_t{0});
+      read_failures2[os] = std::pair(when, duration);
+      return fmt::format("ok - read stashed for {} IOs", duration);
     default:
       break;
     }
@@ -174,6 +179,10 @@ namespace ECInject {
     case 1:
       failures = &read_failures1;
       break;
+    case 2:
+        os.set_shard(shard_id_t{0});
+        failures = &read_failures2;
+        break;
     default:
       return "unrecognized error inject type";
     }
@@ -292,6 +301,10 @@ namespace ECInject {
   bool test_read_error1(const ghobject_t& o)
   {
     return test_error(o, &read_failures1);
+  }
+
+  bool test_read_error2(const ghobject_t& o) {
+    return test_error(o, &read_failures2);
   }
 
   bool test_write_error0(const hobject_t& o,

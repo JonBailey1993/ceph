@@ -89,6 +89,31 @@ protected:
   uint64_t get_perf_counter_by_path(std::string_view path);
 
   void ensure_log_committed(const char* oid, uint64_t offset, uint64_t length);
+  std::string get_bluestore_debug_inject_read_err();
+  void set_bluestore_debug_inject_read_err(std::string value);
+  int get_acting_primary_osd(const std::string& pool_name, const std::string& oid);
+  int get_osd_for_shard(const std::string& pool_name, const std::string& oid,
+                        int shard_index);
+  void inject_read_delay(const std::string& pool_name,
+                         const std::string& oid, int primary_osd,
+                         int shard_index, uint64_t type, uint64_t when,
+                         uint64_t duration);
+  void clear_read_delay_inject(const std::string& pool_name,
+                               const std::string& object_name, int primary_osd,
+                               int shard_index, uint64_t type);
+
+  template<typename... Args>
+    ::testing::AssertionResult OperateSplitOp(int split_ios, int rc, Args... args)
+  {
+    // Perform the I/O operation
+    int ret = ioctx.operate(std::forward<Args>(args)...);
+    if (ret != rc) {
+      return ::testing::AssertionFailure()
+             << "ioctx.operate() Incorrect rc " << rc << " != " << ret;
+    }
+
+    return ::testing::AssertionSuccess();
+  }
 
   template<typename... Args>
   ::testing::AssertionResult AssertOperateSplitOp(int split_ios, int rc, Args... args)
@@ -142,6 +167,10 @@ protected:
   template<typename... Args>
   ::testing::AssertionResult AssertOperateWithoutSplitOp(int rc, Args... args) {
     return AssertOperateSplitOp(0, rc, std::forward<Args>(args)...);
+  }
+  template<typename... Args>
+  ::testing::AssertionResult OperateWithoutSplitOp(int rc, Args... args) {
+    return OperateSplitOp(0, rc, std::forward<Args>(args)...);
   }
 };
 

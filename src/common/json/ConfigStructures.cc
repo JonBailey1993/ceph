@@ -18,3 +18,14 @@ void ConfigSetRequest::decode_json(JSONObj* obj) {
   JSONDecoder::decode_json("value", value, obj);
   JSONDecoder::decode_json("force", force, obj);
 }
+
+void ConfigGetRequest::dump(Formatter* f) const {
+  encode_json("prefix", "config get", f);
+  encode_json("who", who, f);
+  encode_json("key", key, f);
+}
+
+void ConfigGetRequest::decode_json(JSONObj* obj) {
+  JSONDecoder::decode_json("who", who, obj);
+  JSONDecoder::decode_json("key", key, obj);
+}
