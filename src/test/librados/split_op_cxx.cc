@@ -283,4 +283,5 @@ TEST_P(LibRadosSplitOpECPP, Stat) {
   ASSERT_NE(0, time.tv_sec);
 }
 
+INSTANTIATE_TEST_SUITE_P_REPLICA(LibRadosSplitOpPP);
 INSTANTIATE_TEST_SUITE_P_EC(LibRadosSplitOpECPP);
