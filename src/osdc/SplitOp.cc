@@ -430,6 +430,7 @@ void SplitOp::complete() {
     ldout(cct, DBG_LVL) << __func__ << " success this=" << this << " rc=" << rc << dendl;
   } else if (rc == -EAGAIN) {
     ldout(cct, DBG_LVL) << __func__ << " retry this=" << this << " rc=" << rc << dendl;
+    orig_op->split_op_tids.reset();
     objecter.op_post_redrive(orig_op);
     complete = false;
   }
@@ -667,7 +668,7 @@ void SplitOp::prepare_single_op(Objecter::Op *op, Objecter &objecter, CephContex
 }
 
 bool SplitOp::create(Objecter::Op *op, Objecter &objecter,
-  shunique_lock<ceph::shared_mutex>& sul, ceph_tid_t *ptid, CephContext *cct) {
+  shunique_lock<ceph::shared_mutex>& sul, CephContext *cct) {
 
   auto &t = op->target;
   const pg_pool_t *pi = objecter.osdmap->get_pg_pool(t.base_oloc.pool);
@@ -738,6 +739,11 @@ bool SplitOp::create(Objecter::Op *op, Objecter &objecter,
   split_read->protect_torn_reads();
 
 
+  op->split_op_tids = std::make_unique<std::vector<ceph_tid_t>>(split_read->sub_reads.size());
+  auto &tids = *op->split_op_tids;
+
+  int i=0;
+
   // We are committed to doing a split read. Any re-attempts should not be either
   // split or balanced.
   for (auto && [shard, sub_read] : split_read->sub_reads) {
@@ -766,7 +772,8 @@ bool SplitOp::create(Objecter::Op *op, Objecter &objecter,
       st.actual_pgid.reset_shard(shard);
     }
 
-    objecter._op_submit_with_timeout(sub_op, sul, ptid);
+    objecter._op_submit_with_budget(sub_op, sul, &tids[i++]);
+
     debug_op_summary("sent_op", sub_op, cct);
   }
 
