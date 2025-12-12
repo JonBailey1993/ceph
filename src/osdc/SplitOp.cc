@@ -772,7 +772,7 @@ bool SplitOp::create(Objecter::Op *op, Objecter &objecter,
       st.actual_pgid.reset_shard(shard);
     }
 
-    objecter._op_submit_with_budget(sub_op, sul, &tids[i++]);
+    objecter._op_submit(sub_op, sul, &tids[i++]);
 
     debug_op_summary("sent_op", sub_op, cct);
   }
