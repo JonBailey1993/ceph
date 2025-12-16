@@ -2416,13 +2416,17 @@ void Objecter::_op_submit_with_budget(Op *op,
     if (op->tid == 0) {
       op->tid = ++last_tid;
     }
-    OSDSession *s;;
+    *ptid = op->tid;
+    OSDSession *s;
     int r = _get_session(op->target.osd, &s, sul);
     // The lock has been held since the last calc_target, so it should not
     // be possible for a new map to have appeared.
     ceph_assert(r == 0);
+    unique_lock sl(s->lock);
     _session_op_assign(s, op);
     inflight_ops++;
+    sl.unlock();
+    put_session(s);
   } else {
     _op_submit(op, sul, ptid);
   }
