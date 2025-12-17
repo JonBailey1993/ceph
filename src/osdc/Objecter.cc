@@ -2684,11 +2684,15 @@ int Objecter::op_cancel(OSDSession *s, ceph_tid_t tid, int r,
   if (op->split_op_tids) {
     ldout(cct, 10) << __func__ << " split_op cancel tid " << tid
                    << " in session " << s->osd << dendl;
-    // An op with split ops is not actually active, but has child ops which
-    // need to be canceled.  This op should end up being canceled by the
-    // generated completions.
-    for (auto tid : *op->split_op_tids) {
-      op_cancel(tid, r);
+    for (auto sub_tid : tids) {
+      ldout(cct, 10) << __func__ << " SplitOp:: cancel tid " << tid
+               << " sub_tid " << sub_tid
+               << " in session " << s->osd << dendl;
+      int ret = _op_cancel(sub_tid, r);
+      if (ret != 0) {
+        ldout(cct, 20) << __func__ << " unexpected error canceling sub_tid "
+                      << sub_tid << ": " << ret << dendl;
+      }
     }
     return 0;
   }
