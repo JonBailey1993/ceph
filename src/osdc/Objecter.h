@@ -2978,6 +2978,10 @@ public:
     global_op_flags.fetch_and(~flags);
   }
 
+  uint64_t get_min_split_replica_read_size() {
+    return min_split_replica_read_size;
+  }
+
   /// cancel an in-progress request with the given return code
 private:
   int op_cancel(OSDSession *s, ceph_tid_t tid, int r,
