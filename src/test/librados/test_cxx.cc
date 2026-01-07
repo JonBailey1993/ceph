@@ -22,7 +22,7 @@ using namespace librados;
 
 std::string create_one_pool_pp(const std::string &pool_name, Rados &cluster)
 {
-    return create_one_pool_pp(pool_name, cluster, {});
+  return create_one_pool_pp(pool_name, cluster, {});
 }
 std::string create_one_pool_pp(const std::string &pool_name, Rados &cluster,
                                const std::map<std::string, std::string> &config)
@@ -83,8 +83,7 @@ int destroy_ec_profile_and_rule_pp(Rados &cluster,
   return destroy_rule_pp(cluster, rule, oss);
 }
 
-std::string create_one_ec_pool_pp(const std::string &pool_name, Rados &cluster)
-{
+std::string create_one_ec_pool_pp(const std::string &pool_name, Rados &cluster) {
   std::string err = connect_cluster_pp(cluster);
   if (err.length())
     return err;
@@ -244,18 +243,6 @@ int destroy_one_pool_pp(const std::string &pool_name, Rados &cluster)
 {
   int ret = cluster.pool_delete(pool_name.c_str());
   if (ret) {
-    cluster.shutdown();
-    return ret;
-  }
-  cluster.shutdown();
-  return 0;
-}
-
-int destroy_one_ec_pool_pp(const std::string &pool_name, Rados &cluster)
-{
-  int ret = cluster.pool_delete(pool_name.c_str());
-  if (ret) {
-    cluster.shutdown();
     return ret;
   }
 
@@ -264,9 +251,18 @@ int destroy_one_ec_pool_pp(const std::string &pool_name, Rados &cluster)
     std::ostringstream oss;
     ret = destroy_ec_profile_and_rule_pp(cluster, pool_name, oss);
     if (ret) {
-      cluster.shutdown();
       return ret;
     }
+  }
+  return 0;
+}
+
+int destroy_one_ec_pool_pp(const std::string &pool_name, Rados &cluster)
+{
+  int ret = destroy_one_pool_pp(pool_name, cluster);
+  if (ret) {
+    cluster.shutdown();
+    return ret;
   }
 
   cluster.wait_for_latest_osdmap();
