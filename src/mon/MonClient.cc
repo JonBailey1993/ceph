@@ -196,7 +196,7 @@ int MonClient::get_monmap_and_config()
 	}
       }
 
-      if (bootstrap_config) {
+      if (bootstrap_config && monmap.get_epoch()) {
 	ldout(cct,10) << __func__ << " success" << dendl;
 	config = std::move(bootstrap_config);
 	r = 0;
@@ -614,6 +614,7 @@ void MonClient::shutdown()
 
   active_con.reset();
   pending_cons.clear();
+  bootstrap_config.reset();
 
   auth.reset();
   global_id = 0;
